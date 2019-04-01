@@ -5,7 +5,10 @@ HashiCorp Nomad Triton driver plugin
 # Getting Started
 ### Running Nomad with Consul:
 
-Build Nomad and place the binary in the plugins directory.  This is specified in the config.hcl
+Install the Nomad 0.9.0-rc1 that supports plugins.  https://releases.hashicorp.com/nomad/0.9.0-rc1/
+
+
+Build the Nomad Plugin and place the binary in the plugins directory.  This is specified in the config.hcl
 ```
 go build -v . && sudo mv nomad-driver-triton plugins
 ```
