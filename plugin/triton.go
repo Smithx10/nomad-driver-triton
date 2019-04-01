@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"git.bdf-cloud.iqvia.net/bdf-cloud/bdf-cloud/client"
+	"github.com/Smithx10/client"
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	triton "github.com/joyent/triton-go"
