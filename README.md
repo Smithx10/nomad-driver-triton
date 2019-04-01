@@ -31,6 +31,7 @@ Run an example.  Please populate the example.nomad with the correct values that 
 nomad run example.nomad
 ```
 
+You can access the Web UI of Nomad on :4646/ui, and Consul on :8500/ui 
 
 
 # Contribute 
