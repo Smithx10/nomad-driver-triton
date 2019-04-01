@@ -1,5 +1,5 @@
 # nomad-driver-triton
-HashiCorp Nomad LXC driver plugin 
+HashiCorp Nomad Triton driver plugin 
 
 
 # Getting Started
