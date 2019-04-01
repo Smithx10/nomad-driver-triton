@@ -1,4 +1,4 @@
-plugin "nomad-experiment" {
+plugin "nomad-driver-triton" {
   config {}
 }
 

@@ -1,2 +1,2 @@
-./alloc
-./plugins
+alloc
+plugins/nomad-driver-triton
