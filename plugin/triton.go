@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Smithx10/client"
+	"github.com/Smithx10/nomad-driver-triton/client"
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	triton "github.com/joyent/triton-go"
