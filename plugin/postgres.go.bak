@@ -1,0 +1,554 @@
+package postgres
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"encoding/pem"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"git.bdf-cloud.iqvia.net/bdf-cloud/bdf-cloud/client"
+	pgzksd "git.bdf-cloud.iqvia.net/bdf-cloud/pgzksd/app"
+	triton "github.com/joyent/triton-go"
+	"github.com/joyent/triton-go/authentication"
+	"github.com/joyent/triton-go/compute"
+	"github.com/samuel/go-zookeeper/zk"
+	uuid "github.com/satori/go.uuid"
+)
+
+func NewShardManager() (*ShardManager, error) {
+	keyID := os.Getenv("SDC_KEY_ID")
+	accountName := os.Getenv("SDC_ACCOUNT")
+	keyMaterial := os.Getenv("SDC_KEY_MATERIAL")
+	userName := os.Getenv("SDC_USER")
+	insecure := false
+	if os.Getenv("SDC_INSECURE") != "" {
+		insecure = true
+	}
+
+	var signer authentication.Signer
+	var err error
+
+	if keyMaterial == "" {
+		input := authentication.SSHAgentSignerInput{
+			KeyID:       keyID,
+			AccountName: accountName,
+			Username:    userName,
+		}
+		signer, err = authentication.NewSSHAgentSigner(input)
+		if err != nil {
+			log.Fatalf("Error Creating SSH Agent Signer: {{err}}", err)
+		}
+	} else {
+		var keyBytes []byte
+		if _, err = os.Stat(keyMaterial); err == nil {
+			keyBytes, err = ioutil.ReadFile(keyMaterial)
+			if err != nil {
+				log.Fatalf("Error reading key material from %s: %s",
+					keyMaterial, err)
+			}
+			block, _ := pem.Decode(keyBytes)
+			if block == nil {
+				log.Fatalf(
+					"Failed to read key material '%s': no key found", keyMaterial)
+			}
+
+			if block.Headers["Proc-Type"] == "4,ENCRYPTED" {
+				log.Fatalf(
+					"Failed to read key '%s': password protected keys are\n"+
+						"not currently supported. Please decrypt the key prior to use.", keyMaterial)
+			}
+
+		} else {
+			keyBytes = []byte(keyMaterial)
+		}
+
+		input := authentication.PrivateKeySignerInput{
+			KeyID:              keyID,
+			PrivateKeyMaterial: keyBytes,
+			AccountName:        accountName,
+			Username:           userName,
+		}
+		signer, err = authentication.NewPrivateKeySigner(input)
+		if err != nil {
+			log.Fatalf("Error Creating SSH Private Key Signer: {{err}}", err)
+		}
+	}
+
+	// Triton Client Config
+	tritonConfig := &triton.ClientConfig{
+		TritonURL:   os.Getenv("SDC_URL"),
+		AccountName: accountName,
+		Username:    userName,
+		Signers:     []authentication.Signer{signer},
+	}
+
+	z, _, err := zk.Connect([]string{
+		os.Getenv("MANATEE_ZK_CONN_STR"),
+	},
+		time.Second)
+
+	if err != nil {
+		return nil, err
+	}
+
+	sm := ShardManager{
+		tclient: &client.Client{
+			Config:                tritonConfig,
+			InsecureSkipTLSVerify: insecure,
+			AffinityLock:          &sync.RWMutex{},
+		},
+		zclient: z,
+	}
+
+	return &sm, nil
+}
+
+func NewShard(n string, p []*compute.Instance, o string, ss *pgzksd.ShardState) *Shard {
+	s := Shard{
+		Name:       n,
+		Peers:      p,
+		Owner:      o,
+		ShardState: ss,
+	}
+	return &s
+}
+
+func (sm *ShardManager) DeployPeer(dpi *DeployPeerInput) (*compute.Instance, error) {
+	// Create Entrypoint
+	userScript := fmt.Sprintf("#!/bin/bash\n/usr/local/bin/manatee-start")
+
+	fmt.Printf("Deploying %s...\n", dpi.InstName)
+
+	// Create Compute Client
+	c, _ := sm.tclient.Compute()
+
+	inst, err := c.Instances().Create(context.Background(), &compute.CreateInstanceInput{
+		Name:    dpi.InstName,
+		Image:   os.Getenv("MANATEE_IMAGE"),
+		Package: os.Getenv("MANATEE_PACKAGE"),
+		Networks: []string{
+			os.Getenv("MANATEE_NETWORK"),
+			os.Getenv("ZK_NETWORK"),
+		},
+		Tags: map[string]string{
+			"manatee":          "true",
+			"delegate_dataset": "true",
+			"manatee_shard":    dpi.ShardName,
+			"owner":            dpi.Owner,
+		},
+		Metadata: map[string]string{
+			"MANATEE_SHARD":            dpi.ShardName,
+			"MANATEE_ZK_CONN_STR":      os.Getenv("MANATEE_ZK_CONN_STR"),
+			"MANATEE_ONENODEWRITEMODE": dpi.Singleton,
+			"user-script":              userScript,
+			"DBUSER":                   dpi.DBUser,
+			"DBPASSWORD":               dpi.DBPassword,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	for {
+		running, err := c.Instances().Get(context.Background(), &compute.GetInstanceInput{ID: inst.ID})
+		if err != nil {
+			return nil, err
+		}
+		if running.State == "failed" {
+			return nil, fmt.Errorf("peer provisioning failed")
+		}
+		if running.State == "running" {
+			break
+		}
+		time.Sleep(3 * time.Second)
+	}
+
+	return inst, nil
+}
+
+func (sm *ShardManager) GetShardState(gssi *GetShardStateInput) (*pgzksd.ShardState, error) {
+	state, _, err := sm.zclient.Get("/manatee/" + gssi.ShardName + "/state")
+	if err != nil {
+		return nil, err
+	}
+
+	var ss *pgzksd.ShardState
+
+	err = json.Unmarshal(state, &ss)
+	if err != nil {
+		return nil, err
+	}
+
+	return ss, nil
+}
+
+func (sm *ShardManager) CreateShard(csi *CreateShardInput) (*Shard, error) {
+	// Handle Default Count Values
+	singleton := "false"
+	switch csi.Count {
+	case 0:
+		csi.Count = 3
+	case 1:
+		singleton = "true"
+	}
+
+	exist, _ := sm.GetShard(&GetShardInput{
+		Name:  csi.Name,
+		Owner: csi.Owner,
+	})
+
+	if exist != nil {
+		return nil, fmt.Errorf("Shard already exist")
+	}
+
+	fmt.Printf("Deploying Postgres Shard %s with the following %d peers.\n", csi.Name, csi.Count)
+
+	var peers []*compute.Instance
+
+	running := false
+	for {
+		if running != true {
+			for i := 0; i < csi.Count; i++ {
+				go func() {
+					id := smallUUID()
+
+					// Set a Name TODO: Make this more unique
+					instName := fmt.Sprintf("%s_%s", csi.Name, id)
+					peer, err := sm.DeployPeer(&DeployPeerInput{
+						ShardName: csi.Name,
+						InstName:  instName,
+						Singleton: singleton,
+						Owner:     csi.Owner,
+					})
+					if err != nil {
+						fmt.Println(err)
+					}
+					peers = append(peers, peer)
+				}()
+				time.Sleep(1 * time.Second)
+			}
+			running = true
+		}
+		if len(peers) == csi.Count {
+			break
+		}
+		time.Sleep(3 * time.Second)
+	}
+
+	account, err := json.Marshal(csi.ShardAccount)
+	if err != nil {
+		return nil, err
+	}
+
+	sm.zclient.Create("/manatee/"+csi.Name+"/accounts", account, 0, zk.WorldACL(zk.PermAll))
+
+	sm.zclient.Close()
+
+	shard := NewShard(csi.Name, peers, csi.Owner, nil)
+
+	return shard, nil
+}
+
+func (sm *ShardManager) ListShards(lsi *ListShardsInput) ([]*Shard, error) {
+
+	tags := map[string]interface{}{
+		"manatee": "true",
+		"owner":   lsi.Owner,
+	}
+
+	if lsi.Name != "" {
+		tags["manatee_shard"] = lsi.Name
+	}
+
+	c, _ := sm.tclient.Compute()
+	i, err := c.Instances().List(context.Background(), &compute.ListInstancesInput{
+		Tags: tags,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var shards []*Shard
+	shardMap := make(map[string][]*compute.Instance)
+
+	if len(i) > 1 {
+		for _, v := range i {
+			s := v.Metadata["MANATEE_SHARD"]
+			shardMap[s] = append(shardMap[s], v)
+		}
+	} else {
+		return nil, fmt.Errorf("No Shards Found")
+	}
+
+	for k, v := range shardMap {
+		// Get ShardState from the Cluster if available and add it to the Shard Struct
+		state, _ := sm.GetShardState(&GetShardStateInput{
+			ShardName: k,
+		})
+		ns := NewShard(k, v, lsi.Owner, state)
+		shards = append(shards, ns)
+	}
+
+	sm.zclient.Close()
+
+	return shards, nil
+}
+
+func (sm *ShardManager) GetShard(gsi *GetShardInput) (*Shard, error) {
+	c, _ := sm.tclient.Compute()
+	i, _ := c.Instances().List(context.Background(), &compute.ListInstancesInput{
+		Tags: map[string]interface{}{
+			"manatee":       "true",
+			"manatee_shard": gsi.Name,
+			"owner":         gsi.Owner,
+		},
+	})
+
+	if len(i) == 0 {
+		return nil, fmt.Errorf("Shard Not Found")
+	}
+
+	var peers []*compute.Instance
+
+	for _, v := range i {
+		peers = append(peers, v)
+	}
+	s := NewShard(gsi.Name, peers, gsi.Owner, nil)
+
+	return s, nil
+}
+
+func (sm *ShardManager) DeleteShard(dsi *DeleteShardInput) error {
+	c, _ := sm.tclient.Compute()
+	i, err := c.Instances().List(context.Background(), &compute.ListInstancesInput{
+		Tags: map[string]interface{}{
+			"manatee":       "true",
+			"manatee_shard": dsi.Name,
+			"owner":         dsi.Owner,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	if len(i) == 0 {
+		return fmt.Errorf("Shard Not Found")
+	}
+
+	for _, v := range i {
+		fmt.Sprintf("Deleting %s\n", v.ID)
+		c.Instances().Delete(context.Background(), &compute.DeleteInstanceInput{ID: v.ID})
+	}
+
+	ZkRmr("/manatee/"+dsi.Name, sm.zclient)
+	sm.zclient.Close()
+
+	return nil
+}
+
+func (sm *ShardManager) ResizeShard(rsi *ResizeShardInput) (*Shard, error) {
+	// Create Compute Client (used in Deletions)
+	c, _ := sm.tclient.Compute()
+	// Singletones don't suppport resizing
+	singleton := "false"
+	if rsi.Count > 5 {
+		return nil, fmt.Errorf("Shards have a maximum size of 5")
+	}
+	if rsi.Count < 2 {
+		return nil, fmt.Errorf("Shards have a minimum size of 2, unless using a singlton which does not grow or shrink")
+	}
+
+	shard, err := sm.GetShard(&GetShardInput{
+		Name:  rsi.Name,
+		Owner: rsi.Owner,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var peers []*compute.Instance
+
+	// Get Current Count of Peers
+	current := len(shard.Peers)
+
+	// Calculate Amount to Grow
+	if current < rsi.Count {
+		fmt.Printf("Growing Postgres Shard %s from %d peers. to %d peers.\n", rsi.Name, current, rsi.Count)
+		growSize := rsi.Count - current
+		running := false
+		for {
+			if running != true {
+				for i := current; i < rsi.Count; i++ {
+					go func() error {
+						id := smallUUID()
+						// Set a Name TODO: Make this more unique
+						instName := fmt.Sprintf("%s_%s", rsi.Name, id)
+						peer, err := sm.DeployPeer(&DeployPeerInput{
+							ShardName: rsi.Name,
+							InstName:  instName,
+							Singleton: singleton,
+							Owner:     rsi.Owner,
+						})
+						if err != nil {
+							return err
+						}
+						peers = append(peers, peer)
+						return nil
+					}()
+					time.Sleep(1 * time.Second)
+				}
+				running = true
+			}
+
+			if len(peers) == growSize {
+				break
+			}
+			time.Sleep(3 * time.Second)
+		}
+	}
+	if current > rsi.Count {
+		rCount := current - rsi.Count
+		rPeers := shard.Peers[len(shard.Peers)-rCount:]
+
+		for _, v := range rPeers {
+			fmt.Sprintf("Deleting %s\n", v.ID)
+			c.Instances().Delete(context.Background(), &compute.DeleteInstanceInput{ID: v.ID})
+		}
+		return nil, nil
+	}
+
+	if current == rsi.Count {
+		return shard, nil
+	}
+
+	shard, err = sm.GetShard(&GetShardInput{
+		Name:  rsi.Name,
+		Owner: rsi.Owner,
+	})
+
+	return shard, nil
+}
+
+func AppendIfMissing(slice []string, s string) []string {
+	if s == "" {
+		return slice
+	}
+	for _, ele := range slice {
+		if ele == s {
+			return slice
+		}
+	}
+	return append(slice, s)
+}
+
+func askForConfirmation(s string) bool {
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		fmt.Printf("%s [y/n]: ", s)
+
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		response = strings.ToLower(strings.TrimSpace(response))
+
+		if response == "y" || response == "yes" {
+			return true
+		} else if response == "n" || response == "no" {
+			return false
+		}
+	}
+}
+
+// Types
+type Shard struct {
+	Name       string              `json:"name"`
+	Peers      []*compute.Instance `json:"peers"`
+	Owner      string              `json:"owner"`
+	ShardState *pgzksd.ShardState  `json:"shard_state"`
+}
+
+type GetShardStateInput struct {
+	ShardName string `json:"shard_name"`
+}
+
+type ShardAccount struct {
+	Username string `json:"name"`
+	Password string `json:"password"`
+}
+
+// Input Types
+type CreateShardInput struct {
+	Name         string        `json:"name"`
+	Count        int           `json:"count"`
+	Owner        string        `json:"owner"`
+	ShardAccount *ShardAccount `json:"shardaccount"`
+}
+
+type GetShardInput struct {
+	Name  string `json:"name"`
+	Owner string `json:"owner"`
+}
+
+type ResizeShardInput struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+	Owner string `json:"owner"`
+}
+
+type DeleteShardInput struct {
+	Name  string `json:"name"`
+	Owner string `json:"owner"`
+}
+
+type ListShardsInput struct {
+	Name  string `json:"name,omitempty"`
+	Owner string `json:"owner"`
+}
+
+type DeployPeerInput struct {
+	Owner      string `json:"owner"`
+	ShardName  string `json:"shardname"`
+	InstName   string `json:"instname"`
+	Singleton  string `json:"singleton"`
+	DBUser     string `json:"dbuser"`
+	DBPassword string `json:"dbpassword"`
+	Image      string `json:"image,omitempty"`
+	Package    string `json:"package,omitempty"`
+	Networks   string `json:"networks,omitempty"`
+	ZKConnStr  string `json:"zkconnstr,omitempty"`
+}
+type ShardManager struct {
+	zclient *zk.Conn
+	tclient *client.Client
+}
+
+func smallUUID() string {
+	id, _ := uuid.NewV4()
+	idString := []rune(id.String())
+	inString := string(idString[0:8])
+	return string(inString)
+}
+
+func ZkRmr(path string, z *zk.Conn) error {
+	nodes, _, _ := z.Children(path)
+	for _, v := range nodes {
+		err := z.Delete(path+"/"+v, -1)
+		if err != nil {
+			ZkRmr(path+"/"+v, z)
+		}
+	}
+	err := z.Delete(path, -1)
+	if err != nil {
+		return err
+	}
+	return nil
+}
