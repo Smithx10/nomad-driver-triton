@@ -30,3 +30,8 @@ Run an example.  Please populate the example.nomad with the correct values that 
 ```
 nomad run example.nomad
 ```
+
+
+
+# Contribute 
+Read https://github.com/hashicorp/nomad/blob/website/plugin-docs/website/source/docs/internals/plugins/task-drivers.html.md and then make changes and open a PR.
