@@ -103,10 +103,14 @@ func (tth *TritonTaskHandler) CreateFWRules(ctx context.Context, dtc *drivers.Ta
 			Description: fmt.Sprintf("Nomad FWRule for service: %s", k),
 		})
 		if err != nil {
+			// Clean Up already Created rules
+			tth.DeleteFWRules(&TritonTask{
+				ctx:     ctx,
+				fwrules: fwrules,
+			})
 			return nil, err
 		}
 		fwrules = append(fwrules, r)
-
 	}
 
 	tth.fwLock.Unlock()
@@ -341,25 +345,12 @@ func (tth *TritonTaskHandler) DeleteInstance(tt *TritonTask) error {
 	return nil
 }
 
-func (tth *TritonTaskHandler) CleanUpTritonTask(tt *TritonTask) error {
-	tth.logger.Info("Inside tth CleanUpTritonTask")
-	// Cleanup the Actul Instance if it was created.
-	if err := tth.DeleteInstance(tt); err != nil {
-		return err
-	}
+//func (tth *TritonTaskHandler) CleanUpTritonTask(ctx context., dtc *drivers.TaskConfig, tc TaskConfig) error {
+//tth.logger.Info("Inside tth CleanUpTritonTask")
+//// Cleanup If the Task Allocation failed
 
-	if err := tth.DeleteInstance(tt); err != nil {
-		return err
-	}
-
-	if len(tt.fwrules) > 0 {
-		if err := tth.DeleteFWRules(tt); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
+//return nil
+//}
 
 func (tth *TritonTaskHandler) GetInstStatus(tt *TritonTask) {
 	tth.logger.Info("Inside GetInstStatus")
