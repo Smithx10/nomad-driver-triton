@@ -35,19 +35,19 @@ func (h *taskHandle) TaskStatus() *drivers.TaskStatus {
 	return &drivers.TaskStatus{
 		ID:          h.taskConfig.ID,
 		Name:        h.taskConfig.Name,
-		State:       h.tritonTask.status,
+		State:       h.tritonTask.Status,
 		StartedAt:   h.startedAt,
 		CompletedAt: h.completedAt,
 		ExitResult:  h.exitResult,
 		DriverAttributes: map[string]string{
-			"Brand":           h.tritonTask.instance.Brand,
-			"ComputeNode":     h.tritonTask.instance.ComputeNode,
-			"FirewallEnabled": strconv.FormatBool(h.tritonTask.instance.FirewallEnabled),
-			"Image":           h.tritonTask.instance.Image,
-			"Nname":           h.tritonTask.instance.Name,
-			"Package":         h.tritonTask.instance.Package,
-			"PrimaryIP":       h.tritonTask.instance.PrimaryIP,
-			"Type":            h.tritonTask.instance.Type,
+			"Brand":           h.tritonTask.Instance.Brand,
+			"ComputeNode":     h.tritonTask.Instance.ComputeNode,
+			"FirewallEnabled": strconv.FormatBool(h.tritonTask.Instance.FirewallEnabled),
+			"Image":           h.tritonTask.Instance.Image,
+			"Nname":           h.tritonTask.Instance.Name,
+			"Package":         h.tritonTask.Instance.Package,
+			"PrimaryIP":       h.tritonTask.Instance.PrimaryIP,
+			"Type":            h.tritonTask.Instance.Type,
 		},
 	}
 }

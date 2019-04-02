@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/hashicorp/nomad/plugins/shared/hclspec"
 	pstructs "github.com/hashicorp/nomad/plugins/shared/structs"
+	"github.com/joyent/triton-go/compute"
+	"github.com/joyent/triton-go/network"
 )
 
 const (
@@ -86,9 +88,10 @@ type TaskConfig struct {
 // StartTask. This information is needed to rebuild the task state and handler
 // during recovery.
 type TaskState struct {
-	TaskConfig   *drivers.TaskConfig
-	InstanceName string
-	StartedAt    time.Time
+	TaskConfig *drivers.TaskConfig
+	InstanceID string
+	FWRules    []string
+	StartedAt  time.Time
 }
 
 type Driver struct {
@@ -192,8 +195,79 @@ func (d *Driver) buildFingerprint() *drivers.Fingerprint {
 	}
 }
 
-func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
+func (d *Driver) RecoverTask(h *drivers.TaskHandle) error {
+	// TODO Move this over to triton.go
 	d.logger.Info("Inside RecoverTask")
+	if h == nil {
+		return fmt.Errorf("error: handle cannot be nil")
+	}
+
+	if _, ok := d.tasks.Get(h.Config.ID); ok {
+		return nil
+	}
+
+	var taskState TaskState
+	if err := h.GetDriverState(&taskState); err != nil {
+		return fmt.Errorf("failed to decode task state from handle: %v", err)
+	}
+
+	d.logger.Info(fmt.Sprintf("HANDLESTATE: %s", taskState))
+
+	d.logger.Info(fmt.Sprintf("TASKSTATE: %s", taskState))
+
+	// Build Context
+	ctx := context.Background()
+	sctx, cancel := context.WithCancel(ctx)
+
+	// Instance
+	c, err := d.tth.client.Compute()
+	if err != nil {
+		return err
+	}
+
+	pi, err := c.Instances().Get(sctx, &compute.GetInstanceInput{ID: taskState.InstanceID})
+	if err != nil {
+		return err
+	}
+
+	n, err := d.tth.client.Network()
+	if err != nil {
+		return err
+	}
+
+	// FWRules
+	var fwrules []*network.FirewallRule
+	for _, v := range taskState.FWRules {
+		pr, err := n.Firewall().GetRule(sctx, &network.GetRuleInput{
+			ID: v,
+		})
+		if err != nil {
+			return err
+		}
+		fwrules = append(fwrules, pr)
+	}
+
+	tt := &TritonTask{
+		Instance: pi,
+		Ctx:      sctx,
+		Shutdown: cancel,
+		FWRules:  fwrules,
+	}
+
+	nh := &taskHandle{
+		tth:        d.tth,
+		taskConfig: taskState.TaskConfig,
+		tritonTask: tt,
+		procState:  drivers.TaskStateRunning,
+		startedAt:  taskState.StartedAt,
+		logger:     d.logger,
+		waitCh:     make(chan struct{}),
+	}
+
+	d.tasks.Set(taskState.TaskConfig.ID, nh)
+
+	go nh.run()
+
 	return nil
 }
 
@@ -221,6 +295,11 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		return nil, nil, err
 	}
 
+	var fwruleids []string
+	for _, v := range tt.FWRules {
+		fwruleids = append(fwruleids, v.ID)
+	}
+
 	h := &taskHandle{
 		tth:        d.tth,
 		taskConfig: cfg,
@@ -232,19 +311,21 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	}
 
 	n := &drivers.DriverNetwork{
-		IP:            tt.instance.PrimaryIP,
+		IP:            tt.Instance.PrimaryIP,
 		AutoAdvertise: true,
 	}
 
 	driverState := TaskState{
-		InstanceName: tt.instance.Name,
-		TaskConfig:   cfg,
-		StartedAt:    h.startedAt,
+		InstanceID: tt.Instance.ID,
+		FWRules:    fwruleids,
+		TaskConfig: cfg,
+		StartedAt:  h.startedAt,
 	}
+
+	d.logger.Info(fmt.Sprintf("DRIVERSTATE: %s", driverState))
 
 	if err := handle.SetDriverState(&driverState); err != nil {
 		d.logger.Error("failed to start task, error setting driver state", "error", err)
-		//cleanup()
 		return nil, nil, fmt.Errorf("failed to set driver state: %v", err)
 	}
 
