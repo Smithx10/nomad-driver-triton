@@ -103,6 +103,7 @@ func (tth *TritonTaskHandler) CreateFWRules(ctx context.Context, dtc *drivers.Ta
 			Description: fmt.Sprintf("Nomad FWRule for service: %s", k),
 		})
 		if err != nil {
+			tth.logger.Warn("Error While Provisioning FWRules. Cleanup Initiated")
 			// Clean Up already Created rules
 			tth.DeleteFWRules(&TritonTask{
 				ctx:     ctx,

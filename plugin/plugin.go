@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/hashicorp/nomad/plugins/shared/hclspec"
 	pstructs "github.com/hashicorp/nomad/plugins/shared/structs"
+	"github.com/joyent/triton-go/compute"
 )
 
 const (
@@ -86,9 +87,9 @@ type TaskConfig struct {
 // StartTask. This information is needed to rebuild the task state and handler
 // during recovery.
 type TaskState struct {
-	TaskConfig   *drivers.TaskConfig
-	InstanceName string
-	StartedAt    time.Time
+	TaskConfig *drivers.TaskConfig
+	TritonTask *TritonTask
+	StartedAt  time.Time
 }
 
 type Driver struct {
@@ -192,8 +193,51 @@ func (d *Driver) buildFingerprint() *drivers.Fingerprint {
 	}
 }
 
-func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
+func (d *Driver) RecoverTask(h *drivers.TaskHandle) error {
+	// TODO Move this over to triton.go
 	d.logger.Info("Inside RecoverTask")
+	if h == nil {
+		return fmt.Errorf("error: handle cannot be nil")
+	}
+
+	if _, ok := d.tasks.Get(h.Config.ID); ok {
+		return nil
+	}
+
+	var taskState TaskState
+	if err := h.GetDriverState(&taskState); err != nil {
+		return fmt.Errorf("failed to decode task state from handle: %v", err)
+	}
+
+	d.logger.Info(fmt.Sprintf("HANDLESTATE: %s", taskState))
+
+	c, err := d.tth.client.Compute()
+	if err != nil {
+		return err
+	}
+
+	d.logger.Info(fmt.Sprintf("COMPUTE: %s", c))
+
+	pi, err := c.Instances().Get(context.Background(), &compute.GetInstanceInput{ID: taskState.TritonTask.instance.ID})
+	if err != nil {
+		return err
+	}
+	d.logger.Info(fmt.Sprintf("INSTANCE: %s", pi))
+
+	nh := &taskHandle{
+		tth:        d.tth,
+		taskConfig: taskState.TaskConfig,
+		tritonTask: taskState.TritonTask,
+		procState:  drivers.TaskStateRunning,
+		startedAt:  time.Now().Round(time.Millisecond),
+		logger:     d.logger,
+		waitCh:     make(chan struct{}),
+	}
+
+	d.tasks.Set(taskState.TaskConfig.ID, nh)
+
+	go nh.run()
+
 	return nil
 }
 
@@ -237,9 +281,9 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	}
 
 	driverState := TaskState{
-		InstanceName: tt.instance.Name,
-		TaskConfig:   cfg,
-		StartedAt:    h.startedAt,
+		TritonTask: tt,
+		TaskConfig: cfg,
+		StartedAt:  h.startedAt,
 	}
 
 	if err := handle.SetDriverState(&driverState); err != nil {
