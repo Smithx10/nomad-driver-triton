@@ -29,13 +29,13 @@ type TritonTaskHandler struct {
 }
 
 type TritonTask struct {
-	instance   *compute.Instance
-	ctx        context.Context
-	shutdown   context.CancelFunc
-	statusLock sync.RWMutex
-	createLock sync.RWMutex
-	status     drivers.TaskState
-	fwrules    []*network.FirewallRule
+	Instance   *compute.Instance
+	Ctx        context.Context
+	Shutdown   context.CancelFunc
+	StatusLock sync.RWMutex
+	CreateLock sync.RWMutex
+	Status     drivers.TaskState
+	FWRules    []*network.FirewallRule
 }
 
 func (tth *TritonTaskHandler) NewTritonTask(dtc *drivers.TaskConfig, tc TaskConfig) (*TritonTask, error) {
@@ -61,10 +61,10 @@ func (tth *TritonTaskHandler) NewTritonTask(dtc *drivers.TaskConfig, tc TaskConf
 	}
 
 	tt := &TritonTask{
-		instance: i,
-		ctx:      sctx,
-		shutdown: cancel,
-		fwrules:  firewallRules,
+		Instance: i,
+		Ctx:      sctx,
+		Shutdown: cancel,
+		FWRules:  firewallRules,
 	}
 
 	return tt, nil
@@ -106,8 +106,8 @@ func (tth *TritonTaskHandler) CreateFWRules(ctx context.Context, dtc *drivers.Ta
 			tth.logger.Warn("Error While Provisioning FWRules. Cleanup Initiated")
 			// Clean Up already Created rules
 			tth.DeleteFWRules(&TritonTask{
-				ctx:     ctx,
-				fwrules: fwrules,
+				Ctx:     ctx,
+				FWRules: fwrules,
 			})
 			return nil, err
 		}
@@ -248,13 +248,13 @@ func (tth *TritonTaskHandler) ShutdownInstance(tt *TritonTask) error {
 	}
 
 	// Stop the Instance
-	if err := c.Instances().Stop(tt.ctx, &compute.StopInstanceInput{InstanceID: tt.instance.ID}); err != nil {
+	if err := c.Instances().Stop(tt.Ctx, &compute.StopInstanceInput{InstanceID: tt.Instance.ID}); err != nil {
 		return err
 	}
 
 	// Block Until The Machine is Stopped
 	for {
-		pi, err := c.Instances().Get(tt.ctx, &compute.GetInstanceInput{ID: tt.instance.ID})
+		pi, err := c.Instances().Get(tt.Ctx, &compute.GetInstanceInput{ID: tt.Instance.ID})
 		if err != nil {
 			return err
 		}
@@ -284,7 +284,7 @@ func (tth *TritonTaskHandler) DeleteFWRules(tt *TritonTask) error {
 	}
 
 	// Iterate over the rules and delete them if the proper conditions are met
-	for _, v := range tt.fwrules {
+	for _, v := range tt.FWRules {
 		tth.logger.Info(fmt.Sprintf("Inside TTFWRULES: %s", v.ID))
 
 		// We can encounter a shutdown race, so we will wait for members to be 0 for 3 iterations and move on.  We do this because we don't want to delete a firewall rule that a machine is depending on.  This machine could have been provisioned. We will Warn in the log of this condition, and perhaps inform the user.  TODO find out how to do that. LOL.
@@ -293,7 +293,7 @@ func (tth *TritonTaskHandler) DeleteFWRules(tt *TritonTask) error {
 			timeout := 1
 			for {
 				// Because Rules can be used by many instances with multiple tags only Delete the Rule if we are the last instance using it.  This requires that the length of Members is 0
-				members, _ := n.Firewall().ListRuleMachines(tt.ctx, &network.ListRuleMachinesInput{
+				members, _ := n.Firewall().ListRuleMachines(tt.Ctx, &network.ListRuleMachinesInput{
 					ID: fwr.ID,
 				})
 
@@ -306,7 +306,7 @@ func (tth *TritonTaskHandler) DeleteFWRules(tt *TritonTask) error {
 				}
 
 				if len(members) == 0 {
-					n.Firewall().DeleteRule(tt.ctx, &network.DeleteRuleInput{
+					n.Firewall().DeleteRule(tt.Ctx, &network.DeleteRuleInput{
 						ID: fwr.ID,
 					})
 					tth.logger.Info(fmt.Sprintf("FW Rule Deleted: %s", fwr.ID))
@@ -330,13 +330,13 @@ func (tth *TritonTaskHandler) DeleteInstance(tt *TritonTask) error {
 	}
 
 	// Delete the Instance
-	if err := c.Instances().Delete(tt.ctx, &compute.DeleteInstanceInput{ID: tt.instance.ID}); err != nil {
+	if err := c.Instances().Delete(tt.Ctx, &compute.DeleteInstanceInput{ID: tt.Instance.ID}); err != nil {
 		return err
 	}
 
 	// Block Until The Machine is Deleted
 	for {
-		_, err := c.Instances().Get(tt.ctx, &compute.GetInstanceInput{ID: tt.instance.ID})
+		_, err := c.Instances().Get(tt.Ctx, &compute.GetInstanceInput{ID: tt.Instance.ID})
 		if err != nil {
 			break
 		}
@@ -357,35 +357,35 @@ func (tth *TritonTaskHandler) GetInstStatus(tt *TritonTask) {
 	tth.logger.Info("Inside GetInstStatus")
 	for {
 		select {
-		case <-tt.ctx.Done():
+		case <-tt.Ctx.Done():
 			return
 		default:
 			c, err := tth.client.Compute()
 			if err != nil {
 				return
 			}
-			i, err := c.Instances().Get(tt.ctx, &compute.GetInstanceInput{ID: tt.instance.ID})
+			i, err := c.Instances().Get(tt.Ctx, &compute.GetInstanceInput{ID: tt.Instance.ID})
 			if err != nil {
 				return
 			}
 
-			tt.statusLock.Lock()
-			tth.logger.Info(fmt.Sprintf(i.State))
-			tth.logger.Info(fmt.Sprintln(tt.fwrules))
+			tt.StatusLock.Lock()
+			tth.logger.Info(fmt.Sprintf("STATUS: %s", i.State))
+			tth.logger.Info(fmt.Sprintf("FWRULES: %s", tt.FWRules))
 
 			switch i.State {
 			case "running":
-				tt.status = drivers.TaskStateRunning
+				tt.Status = drivers.TaskStateRunning
 			case "failed":
-				tt.status = drivers.TaskStateExited
+				tt.Status = drivers.TaskStateExited
 				return
 			case "stopped":
-				tt.status = drivers.TaskStateExited
+				tt.Status = drivers.TaskStateExited
 				return
 			default:
-				tt.status = drivers.TaskStateUnknown
+				tt.Status = drivers.TaskStateUnknown
 			}
-			tt.statusLock.Unlock()
+			tt.StatusLock.Unlock()
 
 			// Poll time for Instance State
 			time.Sleep(5 * time.Second)
