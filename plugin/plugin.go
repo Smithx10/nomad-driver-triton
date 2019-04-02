@@ -6,6 +6,7 @@ import (
 	"time"
 
 	hclog "github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/nomad/drivers/shared/eventer"
 	"github.com/hashicorp/nomad/plugins/base"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/hashicorp/nomad/plugins/shared/hclspec"
@@ -95,6 +96,9 @@ type Driver struct {
 	// logger will log to the plugin output which is usually an 'executor.out'
 	// file located in the root of the TaskDir
 	logger hclog.Logger
+	// eventer is used to handle multiplexing of TaskEvents calls such that an
+	// event can be broadcast to all callers
+	eventer *eventer.Eventer
 
 	config *DriverConfig
 
@@ -107,12 +111,14 @@ type Driver struct {
 var _ drivers.DriverPlugin = &Driver{}
 
 func NewDriver(logger hclog.Logger) *Driver {
+	ctx, cancel := context.WithCancel(context.Background())
 	logger = logger.Named(pluginName)
 
 	return &Driver{
-		logger: logger,
-		tasks:  newTaskStore(),
-		tth:    NewTritonTaskHandler(logger),
+		logger:  logger,
+		eventer: eventer.NewEventer(ctx, logger),
+		tasks:   newTaskStore(),
+		tth:     NewTritonTaskHandler(logger),
 	}
 }
 
@@ -329,7 +335,7 @@ func (d *Driver) TaskStats(ctx context.Context, taskID string, interval time.Dur
 
 func (d *Driver) TaskEvents(ctx context.Context) (<-chan *drivers.TaskEvent, error) {
 	d.logger.Info("Inside TaskEvents")
-	return make(chan *drivers.TaskEvent), nil
+	return d.eventer.TaskEvents(ctx)
 }
 
 func (d *Driver) SignalTask(taskID string, signal string) error {
