@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -169,21 +170,36 @@ func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.T
 		tc.Tags["triton.cns.services"] = fmt.Sprintf(strings.Join(tc.CNS, ","))
 	}
 
-	// Networks
-	//var networks []string
-
 	// Resources
 	tth.logger.Info(fmt.Sprintf("DEVENV: %s", dtc.Resources))
 
 	// Make Name Reflect the Nomad Spec
 	uniqueName := fmt.Sprintf("%s-%s-%s-%s", dtc.JobName, dtc.TaskGroupName, dtc.Name, dtc.AllocID[:8])
 
+	// Image
+	image, err := tth.GetImage(tc.Image)
+	if err != nil {
+		return nil, err
+	}
+
+	// Networks
+	networks, err := tth.GetNetworks(tc.Networks)
+	if err != nil {
+		return nil, err
+	}
+
+	// Package
+	pkg, err := tth.GetPackage(tc.Package)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create the Instance
 	i, err := c.Instances().Create(ctx, &compute.CreateInstanceInput{
 		Name:            uniqueName,
-		Image:           tc.Image,
-		Package:         tc.Package,
-		Networks:        tc.Networks,
+		Image:           image,
+		Package:         pkg,
+		Networks:        networks,
 		Tags:            tc.Tags,
 		Metadata:        metadata,
 		FirewallEnabled: tc.FWEnabled,
@@ -470,4 +486,156 @@ func NewTritonTaskHandler(logger hclog.Logger) *TritonTaskHandler {
 		},
 		logger: logger,
 	}
+}
+
+func (tth *TritonTaskHandler) GetImage(i Image) (string, error) {
+	tth.logger.Info("Inside tth getImage")
+
+	c, err := tth.client.Compute()
+	if err != nil {
+		return "", err
+	}
+
+	input := &compute.ListImagesInput{}
+
+	if i.UUID != "" {
+		return i.UUID, nil
+	} else {
+		if i.Name != "" {
+			input.Name = i.Name
+		}
+
+		if i.Version != "" {
+			input.Version = i.Version
+		}
+
+	}
+
+	images, err := c.Images().List(context.Background(), input)
+	if err != nil {
+		return "", err
+	}
+
+	var image *compute.Image
+	if len(images) == 0 {
+		return "", fmt.Errorf("Your image query returned no results. Please change " +
+			"your search criteria and try again.")
+	}
+
+	if len(images) > 1 {
+		recent := i.MostRecent
+		log.Printf("[DEBUG] triton_image - multiple results found and `most_recent` is set to: %t", recent)
+		if recent {
+			image = mostRecentImages(images)
+		} else {
+			return "", fmt.Errorf("Your image query returned more than one result. " +
+				"Please try a more specific image search criteria.")
+		}
+	} else {
+		image = images[0]
+	}
+
+	return image.ID, nil
+}
+
+func mostRecentImages(images []*compute.Image) *compute.Image {
+	return sortImages(images)[0]
+}
+
+type imageSort []*compute.Image
+
+func sortImages(images []*compute.Image) []*compute.Image {
+	sortedImages := images
+	sort.Sort(sort.Reverse(imageSort(sortedImages)))
+	return sortedImages
+}
+
+func (a imageSort) Len() int {
+	return len(a)
+}
+
+func (a imageSort) Swap(i, j int) {
+	a[i], a[j] = a[j], a[i]
+}
+
+func (a imageSort) Less(i, j int) bool {
+	itime := a[i].PublishedAt
+	jtime := a[j].PublishedAt
+	return itime.Unix() < jtime.Unix()
+}
+
+func (tth *TritonTaskHandler) GetNetworks(ns []Network) ([]string, error) {
+	tth.logger.Info("Inside tth GetNetworks")
+
+	n, err := tth.client.Network()
+	if err != nil {
+		return nil, err
+	}
+
+	// UUID Provided
+	var networks []string
+	for _, v := range ns {
+		if v.UUID != "" {
+			networks = append(networks, v.UUID)
+		}
+	}
+	if len(networks) > 0 {
+		return networks, nil
+	}
+
+	// Names provided
+	networkList, err := n.List(context.Background(), &network.ListInput{})
+	if err != nil {
+		return nil, err
+	}
+	for _, net := range ns {
+		for _, nw := range networkList {
+			if net.Name == nw.Name {
+				networks = append(networks, nw.Id)
+			}
+		}
+	}
+	if len(networks) > 0 {
+		return networks, nil
+	}
+
+	return nil, fmt.Errorf("Networks Provided Not Found")
+}
+
+func (tth *TritonTaskHandler) GetPackage(p Package) (string, error) {
+	tth.logger.Info("Inside tth GetPackage")
+
+	c, err := tth.client.Compute()
+	if err != nil {
+		return "", err
+	}
+
+	input := &compute.ListPackagesInput{}
+
+	if p.UUID != "" {
+		return p.UUID, nil
+	} else {
+		if p.Name != "" {
+			input.Name = p.Name
+		}
+
+		if p.Version != "" {
+			input.Version = p.Version
+		}
+
+	}
+
+	pkg, err := c.Packages().List(context.Background(), input)
+	if err != nil {
+		return "", err
+	}
+
+	if len(pkg) > 1 {
+		return "", fmt.Errorf("More than 1 Package found, Please be more specific in your search criteria")
+	}
+	if len(pkg) == 0 {
+		return "", fmt.Errorf("No Package found, Please be more specific in your search criteria")
+	}
+
+	return pkg[0].ID, nil
 }

@@ -45,9 +45,22 @@ var (
 	// taskConfigSpec is the hcl specification for the driver config section of
 	// a task within a job. It is returned in the TaskConfigSchema RPC
 	taskConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
-		"image":        hclspec.NewAttr("image", "string", true),
-		"package":      hclspec.NewAttr("package", "string", true),
-		"networks":     hclspec.NewAttr("networks", "list(string)", true),
+		//"image": hclspec.NewAttr("image", "string", true),
+		"image": hclspec.NewBlock("image", true, hclspec.NewObject(map[string]*hclspec.Spec{
+			"name":        hclspec.NewAttr("name", "string", false),
+			"uuid":        hclspec.NewAttr("uuid", "string", false),
+			"version":     hclspec.NewAttr("version", "string", false),
+			"most_recent": hclspec.NewAttr("most_recent", "bool", false),
+		})),
+		"networks": hclspec.NewBlockList("networks", hclspec.NewObject(map[string]*hclspec.Spec{
+			"name": hclspec.NewAttr("name", "string", false),
+			"uuid": hclspec.NewAttr("uuid", "string", false),
+		})),
+		"package": hclspec.NewBlock("package", true, hclspec.NewObject(map[string]*hclspec.Spec{
+			"name":    hclspec.NewAttr("name", "string", false),
+			"uuid":    hclspec.NewAttr("uuid", "string", false),
+			"version": hclspec.NewAttr("version", "string", false),
+		})),
 		"user_data":    hclspec.NewAttr("user_data", "string", false),
 		"cloud_config": hclspec.NewAttr("cloud_config", "string", false),
 		"user_script":  hclspec.NewAttr("user_script", "string", false),
@@ -76,12 +89,30 @@ type TaskConfig struct {
 	CNS         []string          `codec:"cns"`
 	FWEnabled   bool              `codec:"fwenabled"`
 	FWRules     map[string]string `codec:"fwrules"`
-	Image       string            `codec:"image"`
-	Networks    []string          `codec:"networks"`
-	Package     string            `codec:"package"`
+	Image       Image             `codec:"image"`
+	Networks    []Network         `codec:"networks"`
+	Package     Package           `codec:"package"`
 	Tags        map[string]string `codec:"tags"`
 	UserData    string            `codec:"user_data"`
 	UserScript  string            `codec:"user_script"`
+}
+
+type Network struct {
+	Name string `codec:"name"`
+	UUID string `codec:"uuid"`
+}
+
+type Package struct {
+	Name    string `codec:"name"`
+	UUID    string `codec:"uuid"`
+	Version string `codec:"version"`
+}
+
+type Image struct {
+	Name       string `codec:"name"`
+	UUID       string `codec:"uuid"`
+	MostRecent bool   `codec:"most_recent"`
+	Version    string `codec:"version"`
 }
 
 // TaskState is the state which is encoded in the handle returned in
