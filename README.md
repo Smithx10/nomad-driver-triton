@@ -37,5 +37,37 @@ nomad run example.nomad
 You can access the Web UI of Nomad on :4646/ui, and Consul on :8500/ui 
 
 
+### Nomad Config Inputs
+```
+        taskConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
+                "image": hclspec.NewBlock("image", true, hclspec.NewObject(map[string]*hclspec.Spec{
+                        "name":        hclspec.NewAttr("name", "string", false),
+                        "uuid":        hclspec.NewAttr("uuid", "string", false),
+                        "version":     hclspec.NewAttr("version", "string", false),
+                        "most_recent": hclspec.NewAttr("most_recent", "bool", false),
+                })),
+                "networks": hclspec.NewBlockList("networks", hclspec.NewObject(map[string]*hclspec.Spec{
+                        "name": hclspec.NewAttr("name", "string", false),
+                        "uuid": hclspec.NewAttr("uuid", "string", false),
+                })),
+                "package": hclspec.NewBlock("package", true, hclspec.NewObject(map[string]*hclspec.Spec{
+                        "name":    hclspec.NewAttr("name", "string", false),
+                        "uuid":    hclspec.NewAttr("uuid", "string", false),
+                        "version": hclspec.NewAttr("version", "string", false),
+                })),
+                "user_data":    hclspec.NewAttr("user_data", "string", false),
+                "cloud_config": hclspec.NewAttr("cloud_config", "string", false),
+                "user_script":  hclspec.NewAttr("user_script", "string", false),
+                "tags":         hclspec.NewBlockAttrs("tags", "string", false),
+                "affinity":     hclspec.NewAttr("affinity", "string", false),
+                "fwenabled":    hclspec.NewAttr("fwenabled", "bool", false),
+                "fwrules":      hclspec.NewBlockAttrs("fwrules", "string", false),
+                "cns":          hclspec.NewAttr("cns", "list(string)", false),
+ ```
+
+
 # Contribute 
 Read https://github.com/hashicorp/nomad/blob/website/plugin-docs/website/source/docs/internals/plugins/task-drivers.html.md and then make changes and open a PR.
+
+
+
