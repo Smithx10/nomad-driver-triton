@@ -44,16 +44,28 @@ job "job" {
       }
 
       config {
-        package = "f1eb7de6-28fb-65da-cb69-a5d1ac905b8b"
+        package {
+          name = "sample-512M"
+        }
 
-        image     = "7b5981c4-1889-11e7-b4c5-3f3bdfc9b88b"
+        image {
+          name = "img-consul-master"
+
+          #version = "1554100930"
+          most_recent = true
+        }
+
         fwenabled = true
 
-        #image = "3dbbdcca-2eab-11e8-b925-23bf77789921"
+        #image = "50719951-4dab-4fc0-9549-b36466614324"
 
         networks = [
-          "a99cbb20-3bf2-4469-8236-81862b0a9c7b",
-          "71a1abac-f003-4b51-ac63-28d37f2ef0af",
+          {
+            name = "sdc_nat"
+          },
+          {
+            name = "consul"
+          },
         ]
         cns = [
           "rawrsauce",
