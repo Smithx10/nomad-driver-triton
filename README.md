@@ -10,6 +10,8 @@ Install the Nomad 0.9.0-rc1 that supports plugins.  https://releases.hashicorp.c
 
 Build the Nomad Plugin and place the binary in the plugins directory.  This is specified in the config.hcl
 ```
+go get -v github.com/Smithx10/nomad-driver-triton
+cd ~/go/src/github.com/Smithx10/nomad-driver-triton/ 
 go build -v . && sudo mv nomad-driver-triton plugins
 ```
 
