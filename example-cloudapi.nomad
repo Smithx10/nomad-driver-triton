@@ -3,12 +3,12 @@ job "job" {
   type        = "service"
 
   update {
-    canary       = 2
-    max_parallel = 3
+    canary       = 1
+    max_parallel = 1
   }
 
   group "group" {
-    count = 5
+    count = 1
 
     task "task" {
       driver = "triton"
@@ -48,31 +48,37 @@ job "job" {
           name = "sample-512M"
         }
 
-        image {
-          name = "img-consul-master"
+        api_type = "cloud_api"
 
-          #version = "1554100930"
-          most_recent = true
+        cloud_api {
+          #image = "50719951-4dab-4fc0-9549-b36466614324"
+          image {
+            name = "img-consul-master"
+
+            #version = "1554100930"
+            most_recent = true
+          }
+
+          networks = [
+            {
+              name = "sdc_nat"
+            },
+            {
+              name = "consul"
+            },
+          ]
         }
 
         fwenabled = true
 
-        #image = "50719951-4dab-4fc0-9549-b36466614324"
-
-        networks = [
-          {
-            name = "sdc_nat"
-          },
-          {
-            name = "consul"
-          },
-        ]
         cns = [
           "rawrsauce",
         ]
+
         tags = {
           fwtag = "true"
         }
+
         fwrules = {
           fwrule0 = "FROM any TO tag fwtag ALLOW tcp (PORT 22 AND PORT 8080)"
         }

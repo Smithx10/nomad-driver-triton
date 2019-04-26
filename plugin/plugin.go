@@ -45,30 +45,53 @@ var (
 	// taskConfigSpec is the hcl specification for the driver config section of
 	// a task within a job. It is returned in the TaskConfigSchema RPC
 	taskConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
-		//"image": hclspec.NewAttr("image", "string", true),
-		"image": hclspec.NewBlock("image", true, hclspec.NewObject(map[string]*hclspec.Spec{
-			"name":        hclspec.NewAttr("name", "string", false),
-			"uuid":        hclspec.NewAttr("uuid", "string", false),
-			"version":     hclspec.NewAttr("version", "string", false),
-			"most_recent": hclspec.NewAttr("most_recent", "bool", false),
+		"api_type": hclspec.NewAttr("api_type", "string", true),
+		"docker_api": hclspec.NewBlock("docker_api", false, hclspec.NewObject(map[string]*hclspec.Spec{
+			"cmd":             hclspec.NewAttr("cmd", "list(string)", false),
+			"entrypoint":      hclspec.NewAttr("entrypoint", "list(string)", false),
+			"openstdin":       hclspec.NewAttr("openstdin", "bool", false),
+			"stdinonce":       hclspec.NewAttr("stdinonce", "bool", false),
+			"tty":             hclspec.NewAttr("tty", "bool", false),
+			"workingdir":      hclspec.NewAttr("workingdir", "string", false),
+			"labels":          hclspec.NewBlockAttrs("labels", "string", false),
+			"public_network":  hclspec.NewAttr("public_network", "string", false),
+			"private_network": hclspec.NewAttr("private_network", "string", false),
+			"ports": hclspec.NewBlock("ports", false, hclspec.NewObject(map[string]*hclspec.Spec{
+				"tcp":         hclspec.NewAttr("tcp", "list(number)", false),
+				"udp":         hclspec.NewAttr("udp", "list(number)", false),
+				"publish_all": hclspec.NewAttr("publish_all", "bool", false),
+			})),
+			"image": hclspec.NewBlock("image", true, hclspec.NewObject(map[string]*hclspec.Spec{
+				"name":      hclspec.NewAttr("name", "string", true),
+				"auto_pull": hclspec.NewAttr("auto_pull", "bool", false),
+			})),
+			"restart_policy": hclspec.NewAttr("restart_policy", "string", false),
 		})),
-		"networks": hclspec.NewBlockList("networks", hclspec.NewObject(map[string]*hclspec.Spec{
-			"name": hclspec.NewAttr("name", "string", false),
-			"uuid": hclspec.NewAttr("uuid", "string", false),
+		"cloud_api": hclspec.NewBlock("cloud_api", false, hclspec.NewObject(map[string]*hclspec.Spec{
+			"image": hclspec.NewBlock("image", true, hclspec.NewObject(map[string]*hclspec.Spec{
+				"name":        hclspec.NewAttr("name", "string", false),
+				"uuid":        hclspec.NewAttr("uuid", "string", false),
+				"version":     hclspec.NewAttr("version", "string", false),
+				"most_recent": hclspec.NewAttr("most_recent", "bool", false),
+			})),
+			"networks": hclspec.NewBlockList("networks", hclspec.NewObject(map[string]*hclspec.Spec{
+				"name": hclspec.NewAttr("name", "string", false),
+				"uuid": hclspec.NewAttr("uuid", "string", false),
+			})),
+			"user_data":    hclspec.NewAttr("user_data", "string", false),
+			"cloud_config": hclspec.NewAttr("cloud_config", "string", false),
+			"user_script":  hclspec.NewAttr("user_script", "string", false),
 		})),
+		"tags":      hclspec.NewBlockAttrs("tags", "string", false),
+		"affinity":  hclspec.NewAttr("affinity", "list(string)", false),
+		"fwenabled": hclspec.NewAttr("fwenabled", "bool", false),
+		"fwrules":   hclspec.NewBlockAttrs("fwrules", "string", false),
+		"cns":       hclspec.NewAttr("cns", "list(string)", false),
 		"package": hclspec.NewBlock("package", true, hclspec.NewObject(map[string]*hclspec.Spec{
 			"name":    hclspec.NewAttr("name", "string", false),
 			"uuid":    hclspec.NewAttr("uuid", "string", false),
 			"version": hclspec.NewAttr("version", "string", false),
 		})),
-		"user_data":    hclspec.NewAttr("user_data", "string", false),
-		"cloud_config": hclspec.NewAttr("cloud_config", "string", false),
-		"user_script":  hclspec.NewAttr("user_script", "string", false),
-		"tags":         hclspec.NewBlockAttrs("tags", "string", false),
-		"affinity":     hclspec.NewAttr("affinity", "string", false),
-		"fwenabled":    hclspec.NewAttr("fwenabled", "bool", false),
-		"fwrules":      hclspec.NewBlockAttrs("fwrules", "string", false),
-		"cns":          hclspec.NewAttr("cns", "list(string)", false),
 	})
 
 	// capabilities is returned by the Capabilities RPC and indicates what
@@ -84,22 +107,33 @@ type DriverConfig struct {
 }
 
 type TaskConfig struct {
-	Affinity    string            `codec:"affinity"`
-	CloudConfig string            `codec:"cloud_config"`
-	CNS         []string          `codec:"cns"`
-	FWEnabled   bool              `codec:"fwenabled"`
-	FWRules     map[string]string `codec:"fwrules"`
-	Image       Image             `codec:"image"`
-	Networks    []Network         `codec:"networks"`
-	Package     Package           `codec:"package"`
-	Tags        map[string]string `codec:"tags"`
-	UserData    string            `codec:"user_data"`
-	UserScript  string            `codec:"user_script"`
+	APIType   string            `codec:"api_type"`
+	Cloud     CloudAPI          `codec:"cloud_api"`
+	Docker    DockerAPI         `codec:"docker_api"`
+	Affinity  []string          `codec:"affinity"`
+	CNS       []string          `codec:"cns"`
+	FWEnabled bool              `codec:"fwenabled"`
+	FWRules   map[string]string `codec:"fwrules"`
+	Package   Package           `codec:"package"`
+	Tags      map[string]string `codec:"tags"`
+}
+
+type CloudAPI struct {
+	CloudConfig string     `codec:"cloud_config"`
+	Image       CloudImage `codec:"image"`
+	Networks    []Network  `codec:"networks"`
+	UserData    string     `codec:"user_data"`
+	UserScript  string     `codec:"user_script"`
 }
 
 type Network struct {
 	Name string `codec:"name"`
 	UUID string `codec:"uuid"`
+}
+
+type DockerImage struct {
+	Name     string `codec:"name"`
+	AutoPull bool   `codec:"auto_pull"`
 }
 
 type Package struct {
@@ -108,11 +142,33 @@ type Package struct {
 	Version string `codec:"version"`
 }
 
-type Image struct {
+type CloudImage struct {
 	Name       string `codec:"name"`
 	UUID       string `codec:"uuid"`
 	MostRecent bool   `codec:"most_recent"`
 	Version    string `codec:"version"`
+}
+
+type Ports struct {
+	TCP        []int `codec:"tcp"`
+	UDP        []int `codec:"udp"`
+	PublishAll bool  `codec:"publish_all"`
+}
+
+type DockerAPI struct {
+	Cmd            []string          `codec:"cmd"`
+	Entrypoint     []string          `codec:"entrypoint"`
+	OpenStdin      bool              `codec:"openstdin"`
+	StdInOnce      bool              `codec:"stdinonce"`
+	TTY            bool              `codec:"tty"`
+	WorkingDir     string            `codec:"workingdir"`
+	Image          DockerImage       `codec:"image"`
+	AutoPull       bool              `codec:"auto_pull"`
+	Labels         map[string]string `codec:"labels"`
+	PublicNetwork  string            `codec:"public_network"`
+	PrivateNetwork string            `codec:"private_network"`
+	RestartPolicy  string            `codec:"restart_policy"`
+	Ports          Ports             `codec:"ports"`
 }
 
 // TaskState is the state which is encoded in the handle returned in
@@ -304,13 +360,24 @@ func (d *Driver) RecoverTask(h *drivers.TaskHandle) error {
 
 func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drivers.DriverNetwork, error) {
 	d.logger.Info("Inside StartTask")
+	d.logger.Info(fmt.Sprintln("CONFIGERR: ", cfg))
 	if _, ok := d.tasks.Get(cfg.ID); ok {
 		return nil, nil, fmt.Errorf("task with ID %q already started", cfg.ID)
 	}
 
 	var config TaskConfig
 	if err := cfg.DecodeDriverConfig(&config); err != nil {
+		d.logger.Info(fmt.Sprintln("CONFIGERR: ", err))
 		return nil, nil, err
+	}
+
+	switch config.APIType {
+	case "docker_api":
+		break
+	case "cloud_api":
+		break
+	default:
+		return nil, nil, fmt.Errorf("Must supply a api_type of either docker_api or cloud_api")
 	}
 
 	d.logger.Info("starting triton task", "driver_cfg", hclog.Fmt("%+v", config))

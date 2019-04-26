@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Smithx10/nomad-driver-triton/client"
+	docker "github.com/fsouza/go-dockerclient"
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	triton "github.com/joyent/triton-go"
@@ -24,9 +25,10 @@ import (
 )
 
 type TritonTaskHandler struct {
-	client *client.Client
-	logger hclog.Logger
-	fwLock sync.RWMutex
+	client  *client.Client
+	dclient *docker.Client
+	logger  hclog.Logger
+	fwLock  sync.RWMutex
 }
 
 type TritonTask struct {
@@ -131,17 +133,33 @@ func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.T
 	}
 
 	// Init the CloudAPI Client and Create the instance with the inputs from the "tc" TaskConfig
+	var instanceID string
+	var instance *compute.Instance
 	c, err := tth.client.Compute()
 	if err != nil {
 		return nil, err
 	}
 
+	// Handle Restart Policy For Docker
+	var restartPolicy docker.RestartPolicy
+	switch tc.Docker.RestartPolicy {
+	case "Always":
+		restartPolicy = docker.AlwaysRestart()
+	case "OnFailure":
+		restartPolicy = docker.RestartOnFailure(100)
+	case "Never":
+		restartPolicy = docker.NeverRestart()
+	}
+
 	// Handle Environment Variables and Metadata
 	metadata := make(map[string]string)
+	//cloudapi
 	envvars := make(map[string]string)
+	//docker
+	labels := make(map[string]string)
+	var dockerEnv []string
 
 	for k, v := range dtc.Env {
-
 		switch k {
 		case "NOMAD_META_MY_KEY":
 			metadata[k] = v
@@ -149,25 +167,40 @@ func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.T
 			metadata[k] = v
 		default:
 			envvars[k] = v
+			dockerEnv = append(dockerEnv, fmt.Sprintf("%s=%s", k, v))
 		}
 	}
+
+	// Public Network Setting
+	if tc.Docker.PublicNetwork != "" {
+		labels["triton.network.public"] = tc.Docker.PublicNetwork
+	}
+
+	// Docker Labels
+	for k, v := range tc.Docker.Labels {
+		labels[k] = v
+	}
+
+	// Add Affinity Rule to DockerEnv,  Currently the user is responsibile for supplying the affinity: prefix
+	dockerEnv = append(dockerEnv, tc.Affinity...)
 
 	envVars, _ := json.Marshal(envvars)
 
 	metadata["env-vars"] = string(envVars)
-	if tc.UserData != "" {
-		metadata["user-data"] = tc.UserData
+	if tc.Cloud.UserData != "" {
+		metadata["user-data"] = tc.Cloud.UserData
 	}
-	if tc.UserScript != "" {
-		metadata["user-script"] = tc.UserScript
+	if tc.Cloud.UserScript != "" {
+		metadata["user-script"] = tc.Cloud.UserScript
 	}
-	if tc.CloudConfig != "" {
-		metadata["cloud-config"] = tc.CloudConfig
+	if tc.Cloud.CloudConfig != "" {
+		metadata["cloud-config"] = tc.Cloud.CloudConfig
 	}
 
 	// Handle CNS
 	if len(tc.CNS) > 0 {
 		tc.Tags["triton.cns.services"] = fmt.Sprintf(strings.Join(tc.CNS, ","))
+		labels["triton.cns.services"] = fmt.Sprintf(strings.Join(tc.CNS, ","))
 	}
 
 	// Resources
@@ -176,42 +209,122 @@ func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.T
 	// Make Name Reflect the Nomad Spec
 	uniqueName := fmt.Sprintf("%s-%s-%s-%s", dtc.JobName, dtc.TaskGroupName, dtc.Name, dtc.AllocID[:8])
 
-	// Image
-	image, err := tth.GetImage(tc.Image)
-	if err != nil {
-		return nil, err
-	}
-
-	// Networks
-	networks, err := tth.GetNetworks(tc.Networks)
-	if err != nil {
-		return nil, err
-	}
-
 	// Package
 	pkg, err := tth.GetPackage(tc.Package)
 	if err != nil {
 		return nil, err
 	}
+	labels["com.joyent.package"] = pkg.ID
+
+	// PortMapping
+	portBindings := make(map[docker.Port][]docker.PortBinding)
+
+	if len(tc.Docker.Ports.TCP) > 0 {
+		for _, v := range tc.Docker.Ports.TCP {
+			port := docker.Port(fmt.Sprintf("%d/tcp", v))
+			portBindings[port] = []docker.PortBinding{
+				docker.PortBinding{
+					HostIP:   "0.0.0.0",
+					HostPort: fmt.Sprintf("%d", v),
+				},
+			}
+		}
+	}
+	if len(tc.Docker.Ports.UDP) > 0 {
+		for _, v := range tc.Docker.Ports.UDP {
+			port := docker.Port(fmt.Sprintf("%d/udp", v))
+			portBindings[port] = []docker.PortBinding{
+				docker.PortBinding{
+					HostIP:   "0.0.0.0",
+					HostPort: fmt.Sprintf("%d", v),
+				},
+			}
+		}
+	}
 
 	// Create the Instance
-	i, err := c.Instances().Create(ctx, &compute.CreateInstanceInput{
-		Name:            uniqueName,
-		Image:           image,
-		Package:         pkg,
-		Networks:        networks,
-		Tags:            tc.Tags,
-		Metadata:        metadata,
-		FirewallEnabled: tc.FWEnabled,
-	})
-	if err != nil {
-		return nil, err
+	if tc.APIType == "docker_api" {
+		tth.logger.Info("Inside tth docker_api")
+		i, err := tth.dclient.CreateContainer(docker.CreateContainerOptions{
+			Name: uniqueName,
+			Config: &docker.Config{
+				Cmd:        tc.Docker.Cmd,
+				Entrypoint: tc.Docker.Entrypoint,
+				Env:        dockerEnv,
+				Image:      tc.Docker.Image.Name,
+				Labels:     labels,
+				OpenStdin:  tc.Docker.OpenStdin,
+				StdinOnce:  tc.Docker.StdInOnce,
+				Tty:        tc.Docker.TTY,
+				WorkingDir: tc.Docker.WorkingDir,
+			},
+			HostConfig: &docker.HostConfig{
+				NetworkMode:     tc.Docker.PrivateNetwork,
+				RestartPolicy:   restartPolicy,
+				PortBindings:    portBindings,
+				PublishAllPorts: tc.Docker.Ports.PublishAll,
+			},
+			Context: ctx,
+		})
+		if err != nil {
+			return nil, err
+		}
+		// OverRide Get INstance with Docker Instance ID
+		instanceID = fmt.Sprintf("%s-%s-%s-%s-%s", i.ID[0:8], i.ID[8:12], i.ID[12:16], i.ID[16:20], i.ID[20:32])
+
+		err = c.Instances().AddTags(ctx, &compute.AddTagsInput{
+			ID:   instanceID,
+			Tags: tc.Tags,
+		})
+		if err != nil {
+			tth.logger.Info(fmt.Sprintln(err))
+		}
+
+		_, err = c.Instances().UpdateMetadata(ctx, &compute.UpdateMetadataInput{
+			ID:       instanceID,
+			Metadata: metadata,
+		})
+		if err != nil {
+			tth.logger.Info(fmt.Sprintln(err))
+		}
+
+		tth.dclient.StartContainer(i.ID, i.HostConfig)
+	}
+	if tc.APIType == "cloud_api" {
+		// Networks
+		networks, err := tth.GetNetworks(tc.Cloud.Networks)
+		if err != nil {
+			return nil, err
+		}
+
+		// Image
+		image, err := tth.GetImage(tc.Cloud.Image)
+		if err != nil {
+			return nil, err
+		}
+
+		tth.logger.Info("Inside tth cloud_api")
+		i, err := c.Instances().Create(ctx, &compute.CreateInstanceInput{
+			Name:            uniqueName,
+			Image:           image,
+			Package:         pkg.ID,
+			Networks:        networks,
+			Tags:            tc.Tags,
+			Metadata:        metadata,
+			Affinity:        tc.Affinity,
+			FirewallEnabled: tc.FWEnabled,
+		})
+		if err != nil {
+			return nil, err
+		}
+		instanceID = i.ID
+		instance = i
 	}
 
 	// Block Until The Machine is Running
 	for {
 		// pi (Provisioned Instance)
-		pi, err := c.Instances().Get(ctx, &compute.GetInstanceInput{ID: i.ID})
+		pi, err := c.Instances().Get(ctx, &compute.GetInstanceInput{ID: instanceID})
 		if err != nil {
 			return nil, err
 		}
@@ -227,7 +340,7 @@ func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.T
 		time.Sleep(5 * time.Second)
 	}
 
-	return i, nil
+	return instance, nil
 }
 
 func (tth *TritonTaskHandler) DestroyTritonTask(h *taskHandle, force bool) error {
@@ -478,17 +591,21 @@ func NewTritonTaskHandler(logger hclog.Logger) *TritonTaskHandler {
 		Signers:     []authentication.Signer{signer},
 	}
 
+	// Triton Docker Config
+	dockerClient, err := docker.NewClientFromEnv()
+
 	return &TritonTaskHandler{
 		client: &client.Client{
 			Config:                tritonConfig,
 			InsecureSkipTLSVerify: insecure,
 			AffinityLock:          &sync.RWMutex{},
 		},
-		logger: logger,
+		dclient: dockerClient,
+		logger:  logger,
 	}
 }
 
-func (tth *TritonTaskHandler) GetImage(i Image) (string, error) {
+func (tth *TritonTaskHandler) GetImage(i CloudImage) (string, error) {
 	tth.logger.Info("Inside tth getImage")
 
 	c, err := tth.client.Compute()
@@ -572,6 +689,8 @@ func (tth *TritonTaskHandler) GetNetworks(ns []Network) ([]string, error) {
 		return nil, err
 	}
 
+	tth.logger.Info(fmt.Sprintln("NETWORKS: ", ns))
+
 	// UUID Provided
 	var networks []string
 	for _, v := range ns {
@@ -589,12 +708,15 @@ func (tth *TritonTaskHandler) GetNetworks(ns []Network) ([]string, error) {
 		return nil, err
 	}
 	for _, net := range ns {
+		tth.logger.Info(fmt.Sprintln("NET: ", net))
 		for _, nw := range networkList {
+			tth.logger.Info(fmt.Sprintln("NW: ", nw))
 			if net.Name == nw.Name {
 				networks = append(networks, nw.Id)
 			}
 		}
 	}
+	tth.logger.Info(fmt.Sprintln("NETWORKS: ", networks))
 	if len(networks) > 0 {
 		return networks, nil
 	}
@@ -602,18 +724,18 @@ func (tth *TritonTaskHandler) GetNetworks(ns []Network) ([]string, error) {
 	return nil, fmt.Errorf("Networks Provided Not Found")
 }
 
-func (tth *TritonTaskHandler) GetPackage(p Package) (string, error) {
+func (tth *TritonTaskHandler) GetPackage(p Package) (*compute.Package, error) {
 	tth.logger.Info("Inside tth GetPackage")
 
 	c, err := tth.client.Compute()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	input := &compute.ListPackagesInput{}
 
 	if p.UUID != "" {
-		return p.UUID, nil
+		return &compute.Package{ID: p.UUID}, nil
 	} else {
 		if p.Name != "" {
 			input.Name = p.Name
@@ -622,20 +744,19 @@ func (tth *TritonTaskHandler) GetPackage(p Package) (string, error) {
 		if p.Version != "" {
 			input.Version = p.Version
 		}
-
 	}
 
 	pkg, err := c.Packages().List(context.Background(), input)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if len(pkg) > 1 {
-		return "", fmt.Errorf("More than 1 Package found, Please be more specific in your search criteria")
+		return nil, fmt.Errorf("More than 1 Package found, Please be more specific in your search criteria")
 	}
 	if len(pkg) == 0 {
-		return "", fmt.Errorf("No Package found, Please be more specific in your search criteria")
+		return nil, fmt.Errorf("No Package found, Please be more specific in your search criteria")
 	}
 
-	return pkg[0].ID, nil
+	return pkg[0], nil
 }
