@@ -32,6 +32,7 @@ type TritonTaskHandler struct {
 }
 
 type TritonTask struct {
+	APIType    string
 	Instance   *compute.Instance
 	Ctx        context.Context
 	Shutdown   context.CancelFunc
@@ -64,6 +65,7 @@ func (tth *TritonTaskHandler) NewTritonTask(dtc *drivers.TaskConfig, tc TaskConf
 	}
 
 	tt := &TritonTask{
+		APIType:  tc.APIType,
 		Instance: i,
 		Ctx:      sctx,
 		Shutdown: cancel,
@@ -245,13 +247,37 @@ func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.T
 	// Create the Instance
 	if tc.APIType == "docker_api" {
 		tth.logger.Info("Inside tth docker_api")
+
+		// Handle Missing Tag
+		if tc.Docker.Image.Tag == "" {
+			tc.Docker.Image.Tag = "latest"
+		}
+
+		// See if AutoPull is set
+		if tc.Docker.Image.AutoPull == true {
+			err := tth.dclient.PullImage(
+				docker.PullImageOptions{
+					Repository: tc.Docker.Image.Name,
+					Tag:        tc.Docker.Image.Tag,
+					Context:    ctx,
+				},
+				docker.AuthConfiguration{},
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		image := fmt.Sprintf("%s:%s", tc.Docker.Image.Name, tc.Docker.Image.Tag)
+
+		// Create Docker Instance
 		i, err := tth.dclient.CreateContainer(docker.CreateContainerOptions{
 			Name: uniqueName,
 			Config: &docker.Config{
 				Cmd:        tc.Docker.Cmd,
 				Entrypoint: tc.Docker.Entrypoint,
 				Env:        dockerEnv,
-				Image:      tc.Docker.Image.Name,
+				Image:      image,
 				Labels:     labels,
 				OpenStdin:  tc.Docker.OpenStdin,
 				StdinOnce:  tc.Docker.StdInOnce,
@@ -412,12 +438,20 @@ func (tth *TritonTaskHandler) DeleteFWRules(tt *TritonTask) error {
 		return err
 	}
 
+	// If Docker, Append Docker Rules that need to be cleaned up
+	if tt.APIType == "docker_api" {
+		rules, _ := n.Firewall().ListMachineRules(tt.Ctx, &network.ListMachineRulesInput{
+			MachineID: tt.Instance.ID,
+		})
+
+		//Append Rules
+		tt.FWRules = append(tt.FWRules, rules...)
+	}
 	// Iterate over the rules and delete them if the proper conditions are met
 	for _, v := range tt.FWRules {
 		tth.logger.Info(fmt.Sprintf("Inside TTFWRULES: %s", v.ID))
 
 		// We can encounter a shutdown race, so we will wait for members to be 0 for 3 iterations and move on.  We do this because we don't want to delete a firewall rule that a machine is depending on.  This machine could have been provisioned. We will Warn in the log of this condition, and perhaps inform the user.  TODO find out how to do that. LOL.
-
 		go func(fwr *network.FirewallRule) {
 			timeout := 1
 			for {

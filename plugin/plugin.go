@@ -63,6 +63,7 @@ var (
 			})),
 			"image": hclspec.NewBlock("image", true, hclspec.NewObject(map[string]*hclspec.Spec{
 				"name":      hclspec.NewAttr("name", "string", true),
+				"tag":       hclspec.NewAttr("tag", "string", false),
 				"auto_pull": hclspec.NewAttr("auto_pull", "bool", false),
 			})),
 			"restart_policy": hclspec.NewAttr("restart_policy", "string", false),
@@ -133,6 +134,7 @@ type Network struct {
 
 type DockerImage struct {
 	Name     string `codec:"name"`
+	Tag      string `codec:"tag"`
 	AutoPull bool   `codec:"auto_pull"`
 }
 
@@ -163,7 +165,6 @@ type DockerAPI struct {
 	TTY            bool              `codec:"tty"`
 	WorkingDir     string            `codec:"workingdir"`
 	Image          DockerImage       `codec:"image"`
-	AutoPull       bool              `codec:"auto_pull"`
 	Labels         map[string]string `codec:"labels"`
 	PublicNetwork  string            `codec:"public_network"`
 	PrivateNetwork string            `codec:"private_network"`
@@ -175,6 +176,7 @@ type DockerAPI struct {
 // StartTask. This information is needed to rebuild the task state and handler
 // during recovery.
 type TaskState struct {
+	APIType    string
 	TaskConfig *drivers.TaskConfig
 	InstanceID string
 	FWRules    []string
@@ -414,6 +416,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	}
 
 	driverState := TaskState{
+		APIType:    config.APIType,
 		InstanceID: tt.Instance.ID,
 		FWRules:    fwruleids,
 		TaskConfig: cfg,

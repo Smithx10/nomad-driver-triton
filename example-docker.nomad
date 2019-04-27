@@ -53,7 +53,9 @@ job "nexus" {
           }
 
           image {
-            name = "sonatype/nexus3:latest"
+            name      = "ubuntu"
+            tag       = "17.10"
+            auto_pull = true
           }
         }
 
