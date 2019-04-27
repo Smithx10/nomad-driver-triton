@@ -53,9 +53,19 @@ var (
 			"stdinonce":       hclspec.NewAttr("stdinonce", "bool", false),
 			"tty":             hclspec.NewAttr("tty", "bool", false),
 			"workingdir":      hclspec.NewAttr("workingdir", "string", false),
+			"hostname":        hclspec.NewAttr("hostname", "string", false),
+			"dns":             hclspec.NewAttr("dns", "list(string)", false),
+			"dns_search":      hclspec.NewAttr("dns_search", "list(string)", false),
+			"extra_hosts":     hclspec.NewAttr("extra_hosts", "list(string)", false),
+			"user":            hclspec.NewAttr("user", "string", false),
+			"domain_name":     hclspec.NewAttr("domain_name", "string", false),
 			"labels":          hclspec.NewBlockAttrs("labels", "string", false),
 			"public_network":  hclspec.NewAttr("public_network", "string", false),
 			"private_network": hclspec.NewAttr("private_network", "string", false),
+			"log_config": hclspec.NewBlock("log_config", false, hclspec.NewObject(map[string]*hclspec.Spec{
+				"type":   hclspec.NewAttr("type", "string", false),
+				"config": hclspec.NewBlockAttrs("config", "string", false),
+			})),
 			"ports": hclspec.NewBlock("ports", false, hclspec.NewObject(map[string]*hclspec.Spec{
 				"tcp":         hclspec.NewAttr("tcp", "list(number)", false),
 				"udp":         hclspec.NewAttr("udp", "list(number)", false),
@@ -157,6 +167,11 @@ type Ports struct {
 	PublishAll bool  `codec:"publish_all"`
 }
 
+type LogConfig struct {
+	Type   string            `codec:"type"`
+	Config map[string]string `json:"config"`
+}
+
 type DockerAPI struct {
 	Cmd            []string          `codec:"cmd"`
 	Entrypoint     []string          `codec:"entrypoint"`
@@ -170,6 +185,13 @@ type DockerAPI struct {
 	PrivateNetwork string            `codec:"private_network"`
 	RestartPolicy  string            `codec:"restart_policy"`
 	Ports          Ports             `codec:"ports"`
+	Hostname       string            `codec:"hostname"`
+	DNS            []string          `codec:"dns"`
+	DNSSearch      []string          `codec:"dns_search"`
+	User           string            `codec:"user"`
+	Domainname     string            `codec:"domain_name"`
+	ExtraHosts     []string          `codec:"extra_hosts"`
+	LogConfig      LogConfig         `codec:"log_config"`
 }
 
 // TaskState is the state which is encoded in the handle returned in

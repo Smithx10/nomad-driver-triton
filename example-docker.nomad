@@ -41,6 +41,22 @@ job "nexus" {
             test          = "test"
           }
 
+          dns = [
+            "10.45.137.14",
+            "10.45.137.15",
+          ]
+
+          extra_hosts = [
+            "bob:10.10.10.10",
+            "jim:10.10.10.1",
+          ]
+
+          domain_name = "bill.com"
+
+          hostname = "b00p"
+
+          user = "root"
+
           ports {
             tcp = [
               22,
@@ -53,8 +69,8 @@ job "nexus" {
           }
 
           image {
-            name      = "ubuntu"
-            tag       = "17.10"
+            name      = "sonatype/nexus3"
+            tag       = "latest"
             auto_pull = true
           }
         }
