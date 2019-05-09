@@ -8,14 +8,23 @@ job "consul" {
   }
 
   group "consul" {
-    count = 5
+    count = 3
+
+    reschedule {
+      attempts       = 2
+      interval       = "3m"
+      delay          = "30s"
+      delay_function = "exponential"
+      max_delay      = "1h"
+      unlimited      = false
+    }
 
     task "consul" {
       driver = "triton"
 
       service {
         name         = "consul-ssh"
-        tags         = ["ssh", "harvinder"]
+        tags         = ["ssh", "moore"]
         port         = "22"
         address_mode = "driver"
 
@@ -25,12 +34,18 @@ job "consul" {
           interval     = "10s"
           timeout      = "2s"
           address_mode = "driver"
+
+          check_restart {
+            limit           = 3
+            grace           = "90s"
+            ignore_warnings = false
+          }
         }
       }
 
       service {
         name         = "consul-ui"
-        tags         = ["consul", "avleen"]
+        tags         = ["consul", "brent"]
         port         = "8500"
         address_mode = "driver"
 
@@ -41,6 +56,12 @@ job "consul" {
           interval     = "5s"
           timeout      = "2s"
           address_mode = "driver"
+
+          check_restart {
+            limit           = 3
+            grace           = "90s"
+            ignore_warnings = false
+          }
         }
       }
 
@@ -49,8 +70,9 @@ job "consul" {
           name = "sample-512M"
         }
 
-        api_type = "cloud_api"
+        #deletion_protection = true
 
+        api_type = "cloud_api"
         cloud_api {
           image {
             name = "img-consul-master"
@@ -73,17 +95,13 @@ job "consul" {
             },
           ]
         }
-
-        fwenabled = false
-
+        #fwenabled = true
         cns = [
           "consul",
         ]
-
         tags = {
           consul = "true"
         }
-
         fwrules = {
           anytoconsului = "FROM any TO tag consul ALLOW tcp (PORT 22 AND PORT 8500)"
           consultcp     = "FROM tag consul TO tag consul ALLOW tcp PORT all"
@@ -94,7 +112,7 @@ job "consul" {
       env {
         CONTAINERPILOT          = "/etc/containerpilot.json5"
         CONSUL_AGENT            = "1"
-        CONSUL_BOOTSTRAP_EXPECT = "5"
+        CONSUL_BOOTSTRAP_EXPECT = "3"
         CONSUL                  = "consul.svc.bruce-dev.us-east-1.cns.bdf-cloud.iqvia.net"
       }
 

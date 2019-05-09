@@ -3,8 +3,10 @@ job "nexus" {
   type        = "service"
 
   update {
-    canary       = 1
-    max_parallel = 1
+    canary            = 1
+    max_parallel      = 1
+    healthy_deadline  = "8m"
+    progress_deadline = "10m"
   }
 
   group "nexus" {

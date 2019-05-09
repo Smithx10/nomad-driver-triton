@@ -87,6 +87,7 @@ You can access the Web UI of Nomad on :4646/ui, and Consul on :8500/ui
                 })),
                 "tags":      hclspec.NewBlockAttrs("tags", "string", false),
                 "affinity":  hclspec.NewAttr("affinity", "list(string)", false),
+                "deletion_protection": hclspec.NewAttr("deletion_protection", "bool", false),
                 "fwenabled": hclspec.NewAttr("fwenabled", "bool", false),
                 "fwrules":   hclspec.NewBlockAttrs("fwrules", "string", false),
                 "cns":       hclspec.NewAttr("cns", "list(string)", false),

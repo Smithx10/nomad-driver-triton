@@ -93,11 +93,12 @@ var (
 			"cloud_config": hclspec.NewAttr("cloud_config", "string", false),
 			"user_script":  hclspec.NewAttr("user_script", "string", false),
 		})),
-		"tags":      hclspec.NewBlockAttrs("tags", "string", false),
-		"affinity":  hclspec.NewAttr("affinity", "list(string)", false),
-		"fwenabled": hclspec.NewAttr("fwenabled", "bool", false),
-		"fwrules":   hclspec.NewBlockAttrs("fwrules", "string", false),
-		"cns":       hclspec.NewAttr("cns", "list(string)", false),
+		"tags":                hclspec.NewBlockAttrs("tags", "string", false),
+		"affinity":            hclspec.NewAttr("affinity", "list(string)", false),
+		"deletion_protection": hclspec.NewAttr("deletion_protection", "bool", false),
+		"fwenabled":           hclspec.NewAttr("fwenabled", "bool", false),
+		"fwrules":             hclspec.NewBlockAttrs("fwrules", "string", false),
+		"cns":                 hclspec.NewAttr("cns", "list(string)", false),
 		"package": hclspec.NewBlock("package", true, hclspec.NewObject(map[string]*hclspec.Spec{
 			"name":    hclspec.NewAttr("name", "string", false),
 			"uuid":    hclspec.NewAttr("uuid", "string", false),
@@ -118,15 +119,16 @@ type DriverConfig struct {
 }
 
 type TaskConfig struct {
-	APIType   string            `codec:"api_type"`
-	Cloud     CloudAPI          `codec:"cloud_api"`
-	Docker    DockerAPI         `codec:"docker_api"`
-	Affinity  []string          `codec:"affinity"`
-	CNS       []string          `codec:"cns"`
-	FWEnabled bool              `codec:"fwenabled"`
-	FWRules   map[string]string `codec:"fwrules"`
-	Package   Package           `codec:"package"`
-	Tags      map[string]string `codec:"tags"`
+	APIType            string            `codec:"api_type"`
+	Cloud              CloudAPI          `codec:"cloud_api"`
+	Docker             DockerAPI         `codec:"docker_api"`
+	Affinity           []string          `codec:"affinity"`
+	CNS                []string          `codec:"cns"`
+	DeletionProtection bool              `codec:"deletion_protection"`
+	FWEnabled          bool              `codec:"fwenabled"`
+	FWRules            map[string]string `codec:"fwrules"`
+	Package            Package           `codec:"package"`
+	Tags               map[string]string `codec:"tags"`
 }
 
 type CloudAPI struct {

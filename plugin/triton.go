@@ -367,10 +367,21 @@ func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.T
 		}
 
 		if pi.State == "running" && pi.PrimaryIP != "" {
-			return pi, nil
+			instance = pi
+			break
 		}
 
 		time.Sleep(5 * time.Second)
+	}
+
+	// Enable Deletion Protection if true
+	if tc.DeletionProtection == true {
+		err := c.Instances().EnableDeletionProtection(ctx, &compute.EnableDeletionProtectionInput{
+			InstanceID: instanceID,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return instance, nil

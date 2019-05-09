@@ -25,21 +25,12 @@ job "job" {
           interval     = "10s"
           timeout      = "2s"
           address_mode = "driver"
-        }
-      }
 
-      service {
-        name         = "job-group-task-bob"
-        tags         = ["bob"]
-        port         = "22"
-        address_mode = "driver"
-
-        check {
-          type         = "tcp"
-          port         = "22"
-          interval     = "10s"
-          timeout      = "2s"
-          address_mode = "driver"
+          check_restart {
+            limit           = 3
+            grace           = "90s"
+            ignore_warnings = false
+          }
         }
       }
 
@@ -53,18 +44,16 @@ job "job" {
         cloud_api {
           #image = "50719951-4dab-4fc0-9549-b36466614324"
           image {
-            name = "img-consul-master"
+            name = "centos-7"
 
-            #version = "1554100930"
-            most_recent = true
+            version = "20180323"
+
+            #most_recent = true
           }
 
           networks = [
             {
               name = "sdc_nat"
-            },
-            {
-              name = "consul"
             },
           ]
         }
