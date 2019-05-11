@@ -8,16 +8,7 @@ job "consul" {
   }
 
   group "consul" {
-    count = 3
-
-    reschedule {
-      attempts       = 2
-      interval       = "3m"
-      delay          = "30s"
-      delay_function = "exponential"
-      max_delay      = "1h"
-      unlimited      = false
-    }
+    count = 6
 
     task "consul" {
       driver = "triton"

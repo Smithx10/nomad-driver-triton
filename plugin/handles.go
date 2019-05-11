@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -68,7 +67,7 @@ func (h *taskHandle) run() {
 	defer close(h.waitCh)
 
 	h.logger.Info("in the run loop")
-	h.logger.Info(fmt.Sprintln(h.TaskStatus()))
+	//h.logger.Info(fmt.Sprintln(h.TaskStatus()))
 
 	h.tth.GetInstStatus(h.tritonTask)
 

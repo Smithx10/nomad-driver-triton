@@ -250,7 +250,7 @@ func (d *Driver) SetConfig(cfg *base.Config) error {
 		}
 	}
 
-	d.logger.Warn("Set Config", "config", fmt.Sprintf("%#v", config), "raw", cfg.PluginConfig)
+	//d.logger.Warn("Set Config", "config", fmt.Sprintf("%#v", config), "raw", cfg.PluginConfig)
 
 	d.config = &config
 
@@ -324,9 +324,9 @@ func (d *Driver) RecoverTask(h *drivers.TaskHandle) error {
 		return fmt.Errorf("failed to decode task state from handle: %v", err)
 	}
 
-	d.logger.Info(fmt.Sprintf("HANDLESTATE: %s", taskState))
+	//d.logger.Info(fmt.Sprintf("HANDLESTATE: %s", taskState))
 
-	d.logger.Info(fmt.Sprintf("TASKSTATE: %s", taskState))
+	//d.logger.Info(fmt.Sprintf("TASKSTATE: %s", taskState))
 
 	// Build Context
 	ctx := context.Background()
@@ -386,14 +386,12 @@ func (d *Driver) RecoverTask(h *drivers.TaskHandle) error {
 
 func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drivers.DriverNetwork, error) {
 	d.logger.Info("Inside StartTask")
-	d.logger.Info(fmt.Sprintln("CONFIGERR: ", cfg))
 	if _, ok := d.tasks.Get(cfg.ID); ok {
 		return nil, nil, fmt.Errorf("task with ID %q already started", cfg.ID)
 	}
 
 	var config TaskConfig
 	if err := cfg.DecodeDriverConfig(&config); err != nil {
-		d.logger.Info(fmt.Sprintln("CONFIGERR: ", err))
 		return nil, nil, err
 	}
 
@@ -410,8 +408,6 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 
 	handle := drivers.NewTaskHandle(taskHandleVersion)
 	handle.Config = cfg
-
-	d.logger.Info(fmt.Sprintln("CONFIG: ", config))
 
 	// Create a Triton Task
 	tt, err := d.tth.NewTritonTask(cfg, config)
@@ -447,7 +443,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		StartedAt:  h.startedAt,
 	}
 
-	d.logger.Info(fmt.Sprintf("DRIVERSTATE: %s", driverState))
+	//d.logger.Info(fmt.Sprintf("DRIVERSTATE: %s", driverState))
 
 	if err := handle.SetDriverState(&driverState); err != nil {
 		d.logger.Error("failed to start task, error setting driver state", "error", err)

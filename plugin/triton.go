@@ -357,10 +357,7 @@ func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.T
 	// Block Until The Machine is Running
 	for {
 		// pi (Provisioned Instance)
-		pi, err := c.Instances().Get(ctx, &compute.GetInstanceInput{ID: instanceID})
-		if err != nil {
-			return nil, err
-		}
+		pi, _ := c.Instances().Get(ctx, &compute.GetInstanceInput{ID: instanceID})
 
 		if pi.State == "failed" {
 			return nil, errors.New("Provisioning failed")
@@ -380,7 +377,7 @@ func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.T
 			InstanceID: instanceID,
 		})
 		if err != nil {
-			return nil, err
+			return nil, errors.New("Applying Deletion-Protection")
 		}
 	}
 
@@ -521,7 +518,7 @@ func (tth *TritonTaskHandler) DeleteInstance(tt *TritonTask) error {
 		if err != nil {
 			break
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(4 * time.Second)
 	}
 
 	return nil
@@ -545,14 +542,14 @@ func (tth *TritonTaskHandler) GetInstStatus(tt *TritonTask) {
 			if err != nil {
 				return
 			}
-			i, err := c.Instances().Get(tt.Ctx, &compute.GetInstanceInput{ID: tt.Instance.ID})
+			i, _ := c.Instances().Get(tt.Ctx, &compute.GetInstanceInput{ID: tt.Instance.ID})
 			if err != nil {
-				return
+				tth.logger.Info(fmt.Sprintf("STATUS_FAILED: %s", err))
 			}
 
 			tt.StatusLock.Lock()
 			tth.logger.Info(fmt.Sprintf("STATUS: %s", i.State))
-			tth.logger.Info(fmt.Sprintf("FWRULES: %s", tt.FWRules))
+			//tth.logger.Info(fmt.Sprintf("FWRULES: %s", tt.FWRules))
 
 			switch i.State {
 			case "running":
@@ -572,7 +569,6 @@ func (tth *TritonTaskHandler) GetInstStatus(tt *TritonTask) {
 			time.Sleep(5 * time.Second)
 		}
 	}
-
 }
 
 func NewTritonTaskHandler(logger hclog.Logger) *TritonTaskHandler {
@@ -741,7 +737,7 @@ func (tth *TritonTaskHandler) GetNetworks(ns []Network) ([]string, error) {
 		return nil, err
 	}
 
-	tth.logger.Info(fmt.Sprintln("NETWORKS: ", ns))
+	//tth.logger.Info(fmt.Sprintln("NETWORKS: ", ns))
 
 	// UUID Provided
 	var networks []string
@@ -760,15 +756,15 @@ func (tth *TritonTaskHandler) GetNetworks(ns []Network) ([]string, error) {
 		return nil, err
 	}
 	for _, net := range ns {
-		tth.logger.Info(fmt.Sprintln("NET: ", net))
+		//tth.logger.Info(fmt.Sprintln("NET: ", net))
 		for _, nw := range networkList {
-			tth.logger.Info(fmt.Sprintln("NW: ", nw))
+			//tth.logger.Info(fmt.Sprintln("NW: ", nw))
 			if net.Name == nw.Name {
 				networks = append(networks, nw.Id)
 			}
 		}
 	}
-	tth.logger.Info(fmt.Sprintln("NETWORKS: ", networks))
+	//tth.logger.Info(fmt.Sprintln("NETWORKS: ", networks))
 	if len(networks) > 0 {
 		return networks, nil
 	}
