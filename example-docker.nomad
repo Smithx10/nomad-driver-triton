@@ -1,31 +1,38 @@
-job "nexus" {
+job "redis" {
   datacenters = ["dc1"]
   type        = "service"
 
   update {
-    canary       = 1
-    max_parallel = 1
+    canary            = 1
+    max_parallel      = 1
+    healthy_deadline  = "8m"
+    progress_deadline = "10m"
   }
 
-  group "nexus" {
-    count = 1
+  group "redis" {
+    count = 5
 
-    task "nexus" {
+    task "redis" {
       driver = "triton"
 
       service {
-        name         = "nexus-ui"
-        tags         = ["nexus", "avleen"]
-        port         = "8081"
+        name         = "${TASKGROUP}-redis"
+        tags         = ["global", "cache"]
+        port         = "6379"
         address_mode = "driver"
 
         check {
-          type         = "http"
-          port         = "8081"
-          path         = "/"
-          interval     = "5s"
+          name         = "alive"
+          type         = "tcp"
+          interval     = "10s"
           timeout      = "2s"
           address_mode = "driver"
+
+          check_restart {
+            limit           = 3
+            grace           = "90s"
+            ignore_warnings = false
+          }
         }
       }
 
@@ -37,39 +44,19 @@ job "nexus" {
           private_network = "consul"
 
           labels {
+            group         = "webservice-cache"
             bob.bill.john = "label"
             test          = "test"
           }
 
-          dns = [
-            "10.45.137.14",
-            "10.45.137.15",
-          ]
-
-          extra_hosts = [
-            "bob:10.10.10.10",
-            "jim:10.10.10.1",
-          ]
-
-          domain_name = "bill.com"
-
-          hostname = "b00p"
-
-          user = "root"
-
           ports {
             tcp = [
-              22,
-              8081,
-            ]
-
-            udp = [
-              22,
+              6379,
             ]
           }
 
           image {
-            name      = "sonatype/nexus3"
+            name      = "redis"
             tag       = "latest"
             auto_pull = true
           }
@@ -82,17 +69,17 @@ job "nexus" {
         fwenabled = false
 
         cns = [
-          "nexus",
+          "redis",
         ]
 
         tags = {
-          nexus = "true"
+          redis = "true"
         }
 
         fwrules {
-          anytonexus = "FROM any TO tag nexus ALLOW tcp PORT 8081"
-          nexustcp   = "FROM tag nexus TO tag nexus ALLOW tcp PORT all"
-          nexusudp   = "FROM tag nexus TO tag nexus ALLOW udp PORT all"
+          anytoredis = "FROM any TO tag redis ALLOW tcp PORT 6379"
+          redistcp   = "FROM tag redis TO tag redis ALLOW tcp PORT all"
+          redisudp   = "FROM tag redis TO tag redis ALLOW udp PORT all"
         }
       }
 
