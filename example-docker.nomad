@@ -15,6 +15,11 @@ job "redis" {
     task "redis" {
       driver = "triton"
 
+      resources {
+        cpu    = 20
+        memory = 10
+      }
+
       service {
         name         = "${TASKGROUP}-redis"
         tags         = ["global", "cache"]
@@ -40,8 +45,9 @@ job "redis" {
         api_type = "docker_api"
 
         docker_api {
-          public_network  = "sdc_nat"
-          private_network = "consul"
+          public_network = "sdc_nat"
+
+          private_network = "My-Fabric-Network"
 
           labels {
             group         = "webservice-cache"
