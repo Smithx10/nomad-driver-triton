@@ -8,10 +8,15 @@ job "consul" {
   }
 
   group "consul" {
-    count = 6
+    count = 3
 
     task "consul" {
       driver = "triton"
+
+      resources {
+        cpu    = 20
+        memory = 10
+      }
 
       service {
         name         = "consul-ssh"

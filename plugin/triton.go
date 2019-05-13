@@ -542,9 +542,9 @@ func (tth *TritonTaskHandler) GetInstStatus(tt *TritonTask) {
 			if err != nil {
 				return
 			}
-			i, _ := c.Instances().Get(tt.Ctx, &compute.GetInstanceInput{ID: tt.Instance.ID})
+			i, err := c.Instances().Get(tt.Ctx, &compute.GetInstanceInput{ID: tt.Instance.ID})
 			if err != nil {
-				tth.logger.Info(fmt.Sprintf("STATUS_FAILED: %s", err))
+				tth.logger.Warn(fmt.Sprintf("GET_STATUS_FAILED: %s", err))
 			}
 
 			tt.StatusLock.Lock()
