@@ -99,5 +99,26 @@ You can access the Web UI of Nomad on :4646/ui, and Consul on :8500/ui
         })
 ```
 
+#### api_type _string_
+"api_type" Dictates which Triton Provisioning API you want to use. 
+```
+"api_type": "cloud_api" || "docker_api"
+```
+
+#### docker_api _stanza_
+"docker_api" Contains the parameters required to provision a docker instance on Triton.
+```
+"docker_api": {}
+```
+#### docker_api.cmd _[]string_
+"cmd" Command to run specified as a string or an array of strings.
+```
+"docker_api": {
+  "cmd": [
+    "date",
+  ]
+}
+```
+
 # Contribute 
 Read https://github.com/hashicorp/nomad/blob/website/plugin-docs/website/source/docs/internals/plugins/task-drivers.html.md and then make changes and open a PR.<Paste>
