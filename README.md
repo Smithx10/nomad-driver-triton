@@ -347,6 +347,186 @@ The behavior to apply when the container exits. The value is an object with a Na
   "restart_policy": "always"
 }
 ```
+#### cloud_api _stanza_
+Contains the parameters required to provision a cloudapi instance on Triton.
+```
+"cloud_api": {}
+```
+#### cloud_api.image _stanza_
+Contains the name, uuid, version, and most_recent attributes in order to provision a cloudapi instance on Triton.
+```
+"cloud_api": {
+  "image" {}
+}
+```
+#### cloud_api.image.name _string_
+A string specifying the name of the image that will be used to provision a cloudapi instance on Triton.
+```
+"cloud_api": {
+  "image" {
+    "name" = "consul"
+  }
+}
+```
+#### cloud_api.image.uuid _string_
+A string specifying the uuid of the image that will be used to provision a cloudapi instance on Triton.
+```
+"cloud_api": {
+  "image" {
+    "uuid" = "50719951-4dab-4fc0-9549-b36466614324"
+  }
+}
+```
+#### cloud_api.image.version _string_
+A string specifying the version of the image that will be used to provision a cloudapi instance on Triton.
+```
+"cloud_api": {
+  "image" {
+    "version" = "1554126304"
+  }
+}
+```
+#### cloud_api.image.most_recent _bool_
+A bool specifying to use the most recent version of the image that will be used to provision a cloudapi instance on Triton.
+```
+"cloud_api": {
+  "image" {
+    "most_recent" =  true
+  }
+}
+```
+#### cloud_api.networks _[]map[string]string_
+A list of network objects specifying which networks to use while provisioning a cloudapi instance on Triton.
+```
+"cloud_api": {
+  "networks" = [
+    {
+      name = "sdc_nat"
+    },
+    {
+      name = "consul"
+    },
+  ]
+}
+```
+#### cloud_api.networks.name _string_
+A string specifying the name of a network to use while provisioning a cloudapi instance on Triton.
+```
+"cloud_api": {
+  "networks" = [
+    {
+      name = "sdc_nat"
+    },
+    {
+      name = "consul"
+    },
+  ]
+}
+```
+#### cloud_api.networks.uuid _string_
+A list of network objects specifying which networks to use while provisioning a cloudapi instance on Triton.
+```
+"cloud_api": {
+  "networks" = [
+    {
+      uuid = "50719951-4dab-4fc0-9549-b36466614324"
+    },
+    {
+      uuid = "50719951-4dab-4fc0-9549-b36466614324"
+    },
+  ]
+}
+```
+#### cloud_api.user_data _string_
+A string specifying the user_data that will be used when provisioning a cloudapi instance on Triton.
+```
+"cloud_api": {
+  "user_data" = "'{ "foo": "bar"}'"
+}
+```
+#### cloud_api.cloud_config _string_
+A string specifying the cloud_config that will be used when provisioning a cloudapi instance on Triton.
+```
+"cloud_api": {
+  "cloud_config: "cloud_config string here"
+}
+```
+#### cloud_api.user_script _string_
+A string specifying the user_script that will be used when provisioning a cloudapi instance on Triton.
+```
+"cloud_api": {
+  "user_script: "user_script string here"
+}
+```
+#### tags _map[string]string_
+A map of string specifying the k:v tags that will be used when provisioning a instance on Triton.
+```
+tags = {
+  consul = "true"
+}
+```
+#### affinity _[]string_
+A list of string specifying the affinity rules that will be used when provisioning an instance on Triton.
+```
+affinity = [
+  "rule 1 here",
+]
+```
+#### deletion_protection _bool_
+A bool specifying whether to enable deletion protection for the instance on Triton.
+```
+deletion_protection = false
+```
+#### fwenabled _bool_
+A bool specifying whether to enable the firewall for the instance on Triton.
+```
+fwenabled = false
+```
+#### fwrules _map[string]string_
+A map of string specifying the firewall rules to use while provisioning an instance on Triton.
+```
+fwrules = {
+  anytoconsului = "FROM any TO tag consul ALLOW tcp (PORT 22 AND PORT 8500)"
+  consultcp     = "FROM tag consul TO tag consul ALLOW tcp PORT all"
+  consuludp     = "FROM tag consul TO tag consul ALLOW udp PORT all"
+}
+```
+#### cns _[]string_
+A list of string specifying the cns service names to use while provisioning an instance on Triton.
+```
+cns = [
+  "consul",
+]
+```
+#### package _stanza_
+Specifies the package name and version or uuid to use while provisioning an instance on Triton.
+```
+package {
+  name = "sample-512M"
+}
+```
+#### package.name _string_
+Specifies the package name to use while provisioning an instance on Triton.
+```
+package {
+  name = "sample-512M"
+}
+```
+#### package.version _string_
+Specifies the package version to use while provisioning an instance on Triton.
+```
+package {
+  name = "sample-512M"
+  version = "0.0.1"
+}
+```
+#### package.uuid _string_
+Specifies the package uuid to use while provisioning an instance on Triton.
+```
+package {
+  uuid = "50719951-4dab-4fc0-9549-b36466614324"
+}
+```
 
 # Contribute 
 Read https://github.com/hashicorp/nomad/blob/website/plugin-docs/website/source/docs/internals/plugins/task-drivers.html.md and then make changes and open a PR.<Paste>
