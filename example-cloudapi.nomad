@@ -1,4 +1,4 @@
-job "job" {
+job "bhyve" {
   datacenters = ["dc1"]
   type        = "service"
 
@@ -7,14 +7,14 @@ job "job" {
     max_parallel = 1
   }
 
-  group "group" {
-    count = 1
+  group "example" {
+    count = 2
 
     task "task" {
       driver = "triton"
 
       service {
-        name         = "job-group-task-ssh"
+        name         = "bhyve-demo-ssh"
         tags         = ["example"]
         port         = "22"
         address_mode = "driver"
@@ -36,7 +36,7 @@ job "job" {
 
       config {
         package {
-          name = "sample-512M"
+          name = "sample-2G"
         }
 
         api_type = "cloud_api"
@@ -44,9 +44,9 @@ job "job" {
         cloud_api {
           #image = "50719951-4dab-4fc0-9549-b36466614324"
           image {
-            name = "centos-7"
+            name = "ubuntu-certified-18.04"
 
-            version = "20180323"
+            version = "20180808"
 
             #most_recent = true
           }
@@ -61,7 +61,7 @@ job "job" {
         fwenabled = true
 
         cns = [
-          "rawrsauce",
+          "bhyve_example",
         ]
 
         tags = {
@@ -69,7 +69,7 @@ job "job" {
         }
 
         fwrules = {
-          fwrule0 = "FROM any TO tag fwtag ALLOW tcp (PORT 22 AND PORT 8080)"
+          fwrule0 = "FROM any TO tag fwtag ALLOW tcp PORT 22"
         }
       }
 
