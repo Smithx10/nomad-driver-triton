@@ -389,17 +389,19 @@ func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.T
 func (tth *TritonTaskHandler) DestroyTritonTask(h *taskHandle, force bool) error {
 	tth.logger.Info("Inside tth DestroyTritonTask")
 	// Attempt To Bring it Down Softly if Force isn't true
-	if force != true {
+	if h.IsRunning() && force != true {
 		err := h.tth.ShutdownInstance(h.tritonTask)
 		if err != nil {
 			return err
 		}
 	}
 
-	// Delete the instance
-	err := h.tth.DeleteInstance(h.tritonTask)
-	if err != nil {
-		return err
+	// Delete the instance,  Note if we are using the deleted exit strategy we will never land in destroy task unless the instance has deleted.  So we shouldn't attempt to delete twice.
+	if h.tritonTask.ExitStrategy == "stopped" {
+		err := h.tth.DeleteInstance(h.tritonTask)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Delete FWRules
@@ -440,6 +442,12 @@ func (tth *TritonTaskHandler) ShutdownInstance(tt *TritonTask) error {
 		}
 
 		time.Sleep(5 * time.Second)
+	}
+	if tt.ExitStrategy == "deleted" {
+		err := tth.DeleteInstance(tt)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

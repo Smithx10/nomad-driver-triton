@@ -494,6 +494,7 @@ func (d *Driver) WaitTask(ctx context.Context, taskID string) (<-chan *drivers.E
 
 func (d *Driver) StopTask(taskID string, timeout time.Duration, signal string) error {
 	d.logger.Info("Inside StopTask")
+	d.logger.Info("TIMEOUT_W00t", timeout)
 	h, ok := d.tasks.Get(taskID)
 	if !ok {
 		return drivers.ErrTaskNotFound
@@ -514,7 +515,7 @@ func (d *Driver) DestroyTask(taskID string, force bool) error {
 		return drivers.ErrTaskNotFound
 	}
 
-	if !force {
+	if h.IsRunning() && !force {
 		return fmt.Errorf("cannot destroy running task")
 	}
 
