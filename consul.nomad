@@ -8,7 +8,7 @@ job "consul" {
   }
 
   group "consul" {
-    count = 5
+    count = 3
 
     task "consul" {
       driver = "triton"
@@ -16,6 +16,17 @@ job "consul" {
       resources {
         cpu    = 20
         memory = 10
+      }
+
+      template {
+        destination = "local/file.yml"
+
+        env = true
+
+        data = <<EOH
+          SUMESH="{{ env "NOMAD_TASK_DIR" }}"
+          FRUSTRATED="{{ env "node.unique.id" }}"
+        EOH
       }
 
       service {
@@ -75,8 +86,9 @@ job "consul" {
 
             #uuid = "50719951-4dab-4fc0-9549-b36466614324"
 
-            #version = "1554100930"
-            version = "1554126304"
+            version = "1554100930"
+
+            #version = "1554126304"
 
             #most_recent = true
           }
