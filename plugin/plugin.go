@@ -364,11 +364,11 @@ func (d *Driver) RecoverTask(h *drivers.TaskHandle) error {
 	}
 
 	tt := &TritonTask{
-		Instance: pi,
-		Ctx:      sctx,
-		Shutdown: cancel,
-		FWRules:  fwrules,
-		ExitStrategy: taskState.ExitStrategy
+		Instance:     pi,
+		Ctx:          sctx,
+		Shutdown:     cancel,
+		FWRules:      fwrules,
+		ExitStrategy: taskState.ExitStrategy,
 	}
 
 	nh := &taskHandle{
