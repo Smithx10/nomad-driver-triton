@@ -368,6 +368,7 @@ func (d *Driver) RecoverTask(h *drivers.TaskHandle) error {
 		Ctx:      sctx,
 		Shutdown: cancel,
 		FWRules:  fwrules,
+		ExitStrategy: taskState.ExitStrategy
 	}
 
 	nh := &taskHandle{
