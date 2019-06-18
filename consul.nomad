@@ -114,6 +114,7 @@ job "consul" {
           consultcp     = "FROM tag consul TO tag consul ALLOW tcp PORT all"
           consuludp     = "FROM tag consul TO tag consul ALLOW udp PORT all"
         }
+        exit_strategy = "deleted"
       }
 
       env {

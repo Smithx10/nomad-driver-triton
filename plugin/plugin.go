@@ -104,6 +104,7 @@ var (
 			"uuid":    hclspec.NewAttr("uuid", "string", false),
 			"version": hclspec.NewAttr("version", "string", false),
 		})),
+		"exit_strategy": hclspec.NewAttr("exit_strategy", "string", false),
 	})
 
 	// capabilities is returned by the Capabilities RPC and indicates what
@@ -128,6 +129,7 @@ type TaskConfig struct {
 	FWEnabled          bool              `codec:"fwenabled" json:"fwenabled"`
 	FWRules            map[string]string `codec:"fwrules" json:"fwrules"`
 	Package            Package           `codec:"package" json:"package"`
+	ExitStrategy       string            `codec:"exit_strategy" json:"exit_strategy"`
 	Tags               map[string]string `codec:"tags" json:"tags"`
 }
 
@@ -200,11 +202,12 @@ type DockerAPI struct {
 // StartTask. This information is needed to rebuild the task state and handler
 // during recovery.
 type TaskState struct {
-	APIType    string
-	TaskConfig *drivers.TaskConfig
-	InstanceID string
-	FWRules    []string
-	StartedAt  time.Time
+	APIType      string
+	TaskConfig   *drivers.TaskConfig
+	InstanceID   string
+	FWRules      []string
+	ExitStrategy string
+	StartedAt    time.Time
 }
 
 type Driver struct {
@@ -395,13 +398,27 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		return nil, nil, err
 	}
 
+	// Assert we have either docker_api or cloud_api
 	switch config.APIType {
 	case "docker_api":
 		break
 	case "cloud_api":
 		break
 	default:
-		return nil, nil, fmt.Errorf("Must supply a api_type of either docker_api or cloud_api")
+		return nil, nil, fmt.Errorf("Must supply an api_type of either docker_api or cloud_api")
+	}
+
+	switch config.ExitStrategy {
+	case "stopped":
+		break
+	case "deleted":
+		break
+		// Default to stopped
+	case "":
+		config.ExitStrategy = "stopped"
+		break
+	default:
+		return nil, nil, fmt.Errorf("Must supply an exit_strategy of either stopped or deleted")
 	}
 
 	d.logger.Info("starting triton task", "driver_cfg", hclog.Fmt("%+v", config))
@@ -436,11 +453,12 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	}
 
 	driverState := TaskState{
-		APIType:    config.APIType,
-		InstanceID: tt.Instance.ID,
-		FWRules:    fwruleids,
-		TaskConfig: cfg,
-		StartedAt:  h.startedAt,
+		APIType:      config.APIType,
+		InstanceID:   tt.Instance.ID,
+		FWRules:      fwruleids,
+		TaskConfig:   cfg,
+		StartedAt:    h.startedAt,
+		ExitStrategy: tt.ExitStrategy,
 	}
 
 	//d.logger.Info(fmt.Sprintf("DRIVERSTATE: %s", driverState))

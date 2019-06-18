@@ -32,14 +32,15 @@ type TritonTaskHandler struct {
 }
 
 type TritonTask struct {
-	APIType    string
-	Instance   *compute.Instance
-	Ctx        context.Context
-	Shutdown   context.CancelFunc
-	StatusLock sync.RWMutex
-	CreateLock sync.RWMutex
-	Status     drivers.TaskState
-	FWRules    []*network.FirewallRule
+	APIType      string
+	Instance     *compute.Instance
+	Ctx          context.Context
+	Shutdown     context.CancelFunc
+	StatusLock   sync.RWMutex
+	CreateLock   sync.RWMutex
+	Status       drivers.TaskState
+	FWRules      []*network.FirewallRule
+	ExitStrategy string
 }
 
 func (tth *TritonTaskHandler) NewTritonTask(dtc *drivers.TaskConfig, tc TaskConfig) (*TritonTask, error) {
@@ -65,11 +66,12 @@ func (tth *TritonTaskHandler) NewTritonTask(dtc *drivers.TaskConfig, tc TaskConf
 	}
 
 	tt := &TritonTask{
-		APIType:  tc.APIType,
-		Instance: i,
-		Ctx:      sctx,
-		Shutdown: cancel,
-		FWRules:  firewallRules,
+		APIType:      tc.APIType,
+		Instance:     i,
+		Ctx:          sctx,
+		Shutdown:     cancel,
+		FWRules:      firewallRules,
+		ExitStrategy: tc.ExitStrategy,
 	}
 
 	return tt, nil
@@ -557,7 +559,7 @@ func (tth *TritonTaskHandler) GetInstStatus(tt *TritonTask) {
 			case "failed":
 				tt.Status = drivers.TaskStateExited
 				return
-			case "stopped":
+			case tt.ExitStrategy:
 				tt.Status = drivers.TaskStateExited
 				return
 			default:
