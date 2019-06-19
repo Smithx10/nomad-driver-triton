@@ -96,6 +96,7 @@ You can access the Web UI of Nomad on :4646/ui, and Consul on :8500/ui
                         "uuid":    hclspec.NewAttr("uuid", "string", false),
                         "version": hclspec.NewAttr("version", "string", false),
                 })),
+		"exit_strategy": hclspec.NewAttr("exit_strategy", "string", false),
         })
 ```
 
@@ -526,6 +527,11 @@ Specifies the package uuid to use while provisioning an instance on Triton.
 package {
   uuid = "50719951-4dab-4fc0-9549-b36466614324"
 }
+```
+#### exit_strategy _string_
+A string specifying the desired exit strategy for the nomad task. Can be either "stopped" or "deleted".  Defaults to "stopped".
+```
+exit_stratey = "deleted"
 ```
 
 # Contribute 
