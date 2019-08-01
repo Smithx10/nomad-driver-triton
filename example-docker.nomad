@@ -23,7 +23,7 @@ job "redis" {
       service {
         name         = "${TASKGROUP}-redis"
         tags         = ["global", "cache"]
-        port         = "6379"
+        port         = 6379
         address_mode = "driver"
 
         check {

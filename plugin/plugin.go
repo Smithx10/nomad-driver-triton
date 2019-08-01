@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Smithx10/nomad-driver-triton/types"
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins/base"
 	"github.com/hashicorp/nomad/plugins/drivers"
@@ -116,88 +117,6 @@ var (
 	}
 )
 
-type DriverConfig struct {
-}
-
-type TaskConfig struct {
-	APIType            string            `codec:"api_type" json:"api_type"`
-	Cloud              CloudAPI          `codec:"cloud_api" json:"cloud_api"`
-	Docker             DockerAPI         `codec:"docker_api" json:"docker_api"`
-	Affinity           []string          `codec:"affinity" json:"affinity"`
-	CNS                []string          `codec:"cns" json:"cns"`
-	DeletionProtection bool              `codec:"deletion_protection" json:"deletion_protection"`
-	FWEnabled          bool              `codec:"fwenabled" json:"fwenabled"`
-	FWRules            map[string]string `codec:"fwrules" json:"fwrules"`
-	Package            Package           `codec:"package" json:"package"`
-	ExitStrategy       string            `codec:"exit_strategy" json:"exit_strategy"`
-	Tags               map[string]string `codec:"tags" json:"tags"`
-}
-
-type CloudAPI struct {
-	CloudConfig string     `codec:"cloud_config" json:"cloud_config"`
-	Image       CloudImage `codec:"image" json:"image"`
-	Networks    []Network  `codec:"networks" json:"networks"`
-	UserData    string     `codec:"user_data" json:"user_data"`
-	UserScript  string     `codec:"user_script" json:"user_script"`
-}
-
-type Network struct {
-	Name string `codec:"name" json:"name"`
-	UUID string `codec:"uuid" json:"uuid"`
-}
-
-type DockerImage struct {
-	Name     string `codec:"name" json:"name"`
-	Tag      string `codec:"tag" json:"tag"`
-	AutoPull bool   `codec:"auto_pull" json:"auto_pull"`
-}
-
-type Package struct {
-	Name    string `codec:"name" json:"name"`
-	UUID    string `codec:"uuid" json:"uuid"`
-	Version string `codec:"version" json:"version"`
-}
-
-type CloudImage struct {
-	Name       string `codec:"name" json:"name"`
-	UUID       string `codec:"uuid" json:"uuid"`
-	MostRecent bool   `codec:"most_recent" json:"most_recent"`
-	Version    string `codec:"version" json:"version"`
-}
-
-type Ports struct {
-	TCP        []int `codec:"tcp" json:"tcp"`
-	UDP        []int `codec:"udp" json:"udp"`
-	PublishAll bool  `codec:"publish_all" json:"publish_all"`
-}
-
-type LogConfig struct {
-	Type   string            `codec:"type" json:"type"`
-	Config map[string]string `codec:"config" json:"config"`
-}
-
-type DockerAPI struct {
-	Cmd            []string          `codec:"cmd" json:"cmd"`
-	Entrypoint     []string          `codec:"entrypoint" json:"entrypoint"`
-	OpenStdin      bool              `codec:"openstdin" json:"openstdin"`
-	StdInOnce      bool              `codec:"stdinonce" json:"stdinonce"`
-	TTY            bool              `codec:"tty" json:"tty"`
-	WorkingDir     string            `codec:"workingdir" json:"workingdir"`
-	Image          DockerImage       `codec:"image" json:"image"`
-	Labels         map[string]string `codec:"labels" json:"labels"`
-	PublicNetwork  string            `codec:"public_network" json:"public_network"`
-	PrivateNetwork string            `codec:"private_network" json:"private_network"`
-	RestartPolicy  string            `codec:"restart_policy" json:"restart_policy"`
-	Ports          Ports             `codec:"ports" json:"ports"`
-	Hostname       string            `codec:"hostname" json:"hostname"`
-	DNS            []string          `codec:"dns" json:"dns"`
-	DNSSearch      []string          `codec:"dns_search" json:"dns_search"`
-	User           string            `codec:"user" json:"user"`
-	Domainname     string            `codec:"domain_name" json:"domain_name"`
-	ExtraHosts     []string          `codec:"extra_hosts" json:"extra_hosts"`
-	LogConfig      LogConfig         `codec:"log_config" json:"log_config"`
-}
-
 // TaskState is the state which is encoded in the handle returned in
 // StartTask. This information is needed to rebuild the task state and handler
 // during recovery.
@@ -215,7 +134,7 @@ type Driver struct {
 	// file located in the root of the TaskDir
 	logger hclog.Logger
 
-	config *DriverConfig
+	config *types.DriverConfig
 
 	tth *TritonTaskHandler
 
@@ -246,7 +165,7 @@ func (*Driver) ConfigSchema() (*hclspec.Spec, error) {
 func (d *Driver) SetConfig(cfg *base.Config) error {
 	d.logger.Info("Inside SetConfig")
 
-	var config DriverConfig
+	var config types.DriverConfig
 	if len(cfg.PluginConfig) != 0 {
 		if err := base.MsgPackDecode(cfg.PluginConfig, &config); err != nil {
 			return err
@@ -394,7 +313,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		return nil, nil, fmt.Errorf("task with ID %q already started", cfg.ID)
 	}
 
-	var config TaskConfig
+	var config types.TaskConfig
 	if err := cfg.DecodeDriverConfig(&config); err != nil {
 		return nil, nil, err
 	}
@@ -432,6 +351,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	if err != nil {
 		return nil, nil, err
 	}
+	d.logger.Info("W00T_PLUGINSTANCE", tt.Instance)
 
 	var fwruleids []string
 	for _, v := range tt.FWRules {
@@ -447,6 +367,8 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		logger:     d.logger,
 		waitCh:     make(chan struct{}),
 	}
+
+	d.logger.Info("W00T_PLUGINIP", tt.Instance.PrimaryIP)
 
 	n := &drivers.DriverNetwork{
 		IP:            tt.Instance.PrimaryIP,
@@ -473,6 +395,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 
 	go h.run()
 
+	d.logger.Info("W00T_NETWORK", n)
 	return handle, n, nil
 }
 

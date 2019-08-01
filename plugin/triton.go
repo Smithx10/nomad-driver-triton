@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Smithx10/nomad-driver-triton/client"
+	"github.com/Smithx10/nomad-driver-triton/types"
 	docker "github.com/fsouza/go-dockerclient"
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins/drivers"
@@ -43,7 +44,7 @@ type TritonTask struct {
 	ExitStrategy string
 }
 
-func (tth *TritonTaskHandler) NewTritonTask(dtc *drivers.TaskConfig, tc TaskConfig) (*TritonTask, error) {
+func (tth *TritonTaskHandler) NewTritonTask(dtc *drivers.TaskConfig, tc types.TaskConfig) (*TritonTask, error) {
 	// Initialize the Contexts for the long running TritonTask Supervisor.  The role of these contexts is to be able to cancel out all polling of the state of a Instance on Triton.
 	tth.logger.Info("Inside tth NewTritonTask")
 	ctx := context.Background()
@@ -65,6 +66,8 @@ func (tth *TritonTaskHandler) NewTritonTask(dtc *drivers.TaskConfig, tc TaskConf
 		return nil, err
 	}
 
+	tth.logger.Info("W00T_IP", i.PrimaryIP)
+
 	tt := &TritonTask{
 		APIType:      tc.APIType,
 		Instance:     i,
@@ -77,7 +80,7 @@ func (tth *TritonTaskHandler) NewTritonTask(dtc *drivers.TaskConfig, tc TaskConf
 	return tt, nil
 }
 
-func (tth *TritonTaskHandler) CreateFWRules(ctx context.Context, dtc *drivers.TaskConfig, tc TaskConfig) ([]*network.FirewallRule, error) {
+func (tth *TritonTaskHandler) CreateFWRules(ctx context.Context, dtc *drivers.TaskConfig, tc types.TaskConfig) ([]*network.FirewallRule, error) {
 	tth.fwLock.Lock()
 	tth.logger.Info("Inside tth CreateFWRules")
 
@@ -126,7 +129,7 @@ func (tth *TritonTaskHandler) CreateFWRules(ctx context.Context, dtc *drivers.Ta
 	return fwrules, nil
 }
 
-func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.TaskConfig, tc TaskConfig) (*compute.Instance, error) {
+func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.TaskConfig, tc types.TaskConfig) (*compute.Instance, error) {
 	tth.logger.Info("Inside tth CreateInstance")
 	// TODO Assert Values
 	if dtc.Resources == nil {
@@ -366,6 +369,7 @@ func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.T
 		}
 
 		if pi.State == "running" && pi.PrimaryIP != "" {
+			tth.logger.Info("W00T_PRIMARYIP", pi.PrimaryIP)
 			instance = pi
 			break
 		}
@@ -663,7 +667,7 @@ func NewTritonTaskHandler(logger hclog.Logger) *TritonTaskHandler {
 	}
 }
 
-func (tth *TritonTaskHandler) GetImage(i CloudImage) (string, error) {
+func (tth *TritonTaskHandler) GetImage(i types.CloudImage) (string, error) {
 	tth.logger.Info("Inside tth getImage")
 
 	c, err := tth.client.Compute()
@@ -739,7 +743,7 @@ func (a imageSort) Less(i, j int) bool {
 	return itime.Unix() < jtime.Unix()
 }
 
-func (tth *TritonTaskHandler) GetNetworks(ns []Network) ([]string, error) {
+func (tth *TritonTaskHandler) GetNetworks(ns []types.Network) ([]string, error) {
 	tth.logger.Info("Inside tth GetNetworks")
 
 	n, err := tth.client.Network()
@@ -782,7 +786,7 @@ func (tth *TritonTaskHandler) GetNetworks(ns []Network) ([]string, error) {
 	return nil, fmt.Errorf("Networks Provided Not Found")
 }
 
-func (tth *TritonTaskHandler) GetPackage(p Package) (*compute.Package, error) {
+func (tth *TritonTaskHandler) GetPackage(p types.Package) (*compute.Package, error) {
 	tth.logger.Info("Inside tth GetPackage")
 
 	c, err := tth.client.Compute()

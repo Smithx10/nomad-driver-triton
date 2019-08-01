@@ -15,9 +15,10 @@ job "docker" {
       }
 
       service {
-        name = "${TASKGROUP}-redis"
-        tags = ["global", "cache"]
-        port = "db"
+        name         = "${TASKGROUP}-redis"
+        tags         = ["global", "cache"]
+        port         = "db"
+        address_mode = "driver"
 
         check {
           name     = "alive"

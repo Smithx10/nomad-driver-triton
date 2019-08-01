@@ -31,6 +31,9 @@ func (h *taskHandle) TaskStatus() *drivers.TaskStatus {
 	h.stateLock.RLock()
 	defer h.stateLock.RUnlock()
 
+	h.logger.Info("InsideTaskStatus")
+	h.logger.Info("W00T", h.tritonTask.Instance.Brand)
+
 	return &drivers.TaskStatus{
 		ID:          h.taskConfig.ID,
 		Name:        h.taskConfig.Name,
