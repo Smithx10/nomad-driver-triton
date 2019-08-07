@@ -587,12 +587,12 @@ func (tth *TritonTaskHandler) GetInstStatus(tt *TritonTask) {
 
 func NewTritonTaskHandler(logger hclog.Logger) *TritonTaskHandler {
 	// Init the Triton Client
-	keyID := os.Getenv("SDC_KEY_ID")
-	accountName := os.Getenv("SDC_ACCOUNT")
-	keyMaterial := os.Getenv("SDC_KEY_MATERIAL")
-	userName := os.Getenv("SDC_USER")
+	keyID := triton.GetEnv("KEY_ID")
+	accountName := triton.GetEnv("ACCOUNT")
+	keyMaterial := triton.GetEnv("KEY_MATERIAL")
+	userName := triton.GetEnv("USER")
 	insecure := false
-	if os.Getenv("SDC_INSECURE") != "" {
+	if triton.GetEnv("INSECURE") != "" {
 		insecure = true
 	}
 
@@ -647,7 +647,7 @@ func NewTritonTaskHandler(logger hclog.Logger) *TritonTaskHandler {
 
 	// Triton Client Config
 	tritonConfig := &triton.ClientConfig{
-		TritonURL:   os.Getenv("SDC_URL"),
+		TritonURL:   triton.GetEnv("URL"),
 		AccountName: accountName,
 		Username:    userName,
 		Signers:     []authentication.Signer{signer},

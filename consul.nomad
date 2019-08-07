@@ -87,9 +87,9 @@ job "consul" {
             #uuid = "50719951-4dab-4fc0-9549-b36466614324"
 
 
-            version = "1554100930"
+            #version = "1554100930"
 
-            #version = "1554126304"
+            version = "1554126304"
 
             #most_recent = true
           }
