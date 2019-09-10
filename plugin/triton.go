@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -740,7 +741,14 @@ func (a imageSort) Swap(i, j int) {
 func (a imageSort) Less(i, j int) bool {
 	itime := a[i].PublishedAt
 	jtime := a[j].PublishedAt
-	return itime.Unix() < jtime.Unix()
+	re := regexp.MustCompile("[0-9]+")
+	iversion := strings.Join(re.FindAllString(a[i].Version, -1), "")
+	jversion := strings.Join(re.FindAllString(a[j].Version, -1), "")
+	if iversion == jversion {
+		return itime.Unix() < jtime.Unix()
+	} else {
+		return itime.Unix() < jtime.Unix() && iversion < jversion
+	}
 }
 
 func (tth *TritonTaskHandler) GetNetworks(ns []types.Network) ([]string, error) {
