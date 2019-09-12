@@ -1,2 +1,3 @@
 alloc/*
 plugins/nomad-driver-triton
+.idea
