@@ -562,9 +562,13 @@ func (tth *TritonTaskHandler) GetInstStatus(tt *TritonTask) {
 				tth.logger.Warn(fmt.Sprintf("GET_STATUS_FAILED: %s", err))
 			}
 
+			// for the time being log if the err is nil,  this caused a panic.  We do this for debugging for now.
+			if err == nil {
+				tth.logger.Info(fmt.Sprintf("STATUS: %s", i.State))
+				//tth.logger.Info(fmt.Sprintf("FWRULES: %s", tt.FWRules))
+			}
+
 			tt.StatusLock.Lock()
-			tth.logger.Info(fmt.Sprintf("STATUS: %s", i.State))
-			//tth.logger.Info(fmt.Sprintf("FWRULES: %s", tt.FWRules))
 
 			switch i.State {
 			case "running":
