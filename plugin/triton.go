@@ -566,20 +566,20 @@ func (tth *TritonTaskHandler) GetInstStatus(tt *TritonTask) {
 			if err == nil {
 				tth.logger.Info(fmt.Sprintf("STATUS: %s", i.State))
 				//tth.logger.Info(fmt.Sprintf("FWRULES: %s", tt.FWRules))
-			}
 
-			tt.StatusLock.Lock()
+				tt.StatusLock.Lock()
 
-			switch i.State {
-			case "running":
-				tt.Status = drivers.TaskStateRunning
-			case "failed":
-				tt.Status = drivers.TaskStateExited
-				return
-			case tt.ExitStrategy:
-				tt.Status = drivers.TaskStateExited
-				return
-			default:
+				switch i.State {
+				case "running":
+					tt.Status = drivers.TaskStateRunning
+				case "failed":
+					tt.Status = drivers.TaskStateExited
+					return
+				case tt.ExitStrategy:
+					tt.Status = drivers.TaskStateExited
+					return
+				}
+			} else {
 				tt.Status = drivers.TaskStateUnknown
 			}
 			tt.StatusLock.Unlock()
