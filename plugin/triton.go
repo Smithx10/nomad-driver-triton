@@ -212,7 +212,7 @@ func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.T
 	}
 
 	// Resources
-	tth.logger.Info(fmt.Sprintf("DEVENV: %s", dtc.Resources))
+	tth.logger.Info(fmt.Sprintf("DEVENV: %v", dtc.Resources))
 
 	// Make Name Reflect the Nomad Spec
 	uniqueName := fmt.Sprintf("%s-%s-%s-%s", dtc.JobName, dtc.TaskGroupName, dtc.Name, dtc.AllocID[:8])
@@ -259,6 +259,9 @@ func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.T
 			tc.Docker.Image.Tag = "latest"
 		}
 
+		auth, err := tth.resolveRegistryAuthentication(tc, tc.Docker.Image.Name)
+		authOpts := *auth
+
 		// See if AutoPull is set
 		if tc.Docker.Image.AutoPull == true {
 			err := tth.dclient.PullImage(
@@ -267,7 +270,7 @@ func (tth *TritonTaskHandler) CreateInstance(ctx context.Context, dtc *drivers.T
 					Tag:        tc.Docker.Image.Tag,
 					Context:    ctx,
 				},
-				docker.AuthConfiguration{},
+				authOpts,
 			)
 			if err != nil {
 				return nil, err
@@ -611,7 +614,7 @@ func NewTritonTaskHandler(logger hclog.Logger) *TritonTaskHandler {
 		}
 		signer, err = authentication.NewSSHAgentSigner(input)
 		if err != nil {
-			log.Fatalf("Error Creating SSH Agent Signer: {{err}}", err)
+			log.Fatalf("Error Creating SSH Agent Signer: %s", err)
 		}
 	} else {
 		var keyBytes []byte
@@ -645,7 +648,7 @@ func NewTritonTaskHandler(logger hclog.Logger) *TritonTaskHandler {
 		}
 		signer, err = authentication.NewPrivateKeySigner(input)
 		if err != nil {
-			log.Fatalf("Error Creating SSH Private Key Signer: {{err}}", err)
+			log.Fatalf("Error Creating SSH Private Key Signer: %s", err)
 		}
 	}
 
@@ -832,4 +835,15 @@ func (tth *TritonTaskHandler) GetPackage(p types.Package) (*compute.Package, err
 	}
 
 	return pkg[0], nil
+}
+
+// authBackend encapsulates a function that resolves registry credentials.
+type authBackend func(string) (*docker.AuthConfiguration, error)
+
+// resolveRegistryAuthentication attempts to retrieve auth credentials for the
+// repo, trying all authentication-backends possible.
+func (tth *TritonTaskHandler) resolveRegistryAuthentication(tc types.TaskConfig, repo string) (*docker.AuthConfiguration, error) {
+	return firstValidAuth(repo, []authBackend{
+		authFromTaskConfig(tc),
+	})
 }
