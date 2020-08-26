@@ -77,6 +77,12 @@ var (
 				"tag":       hclspec.NewAttr("tag", "string", false),
 				"auto_pull": hclspec.NewAttr("auto_pull", "bool", false),
 			})),
+			"auth": hclspec.NewBlock("auth", false, hclspec.NewObject(map[string]*hclspec.Spec{
+				"username":       hclspec.NewAttr("username", "string", false),
+				"password":       hclspec.NewAttr("password", "string", false),
+				"email":          hclspec.NewAttr("email", "string", false),
+				"server_address": hclspec.NewAttr("server_address", "string", false),
+			})),
 			"restart_policy": hclspec.NewAttr("restart_policy", "string", false),
 		})),
 		"cloud_api": hclspec.NewBlock("cloud_api", false, hclspec.NewObject(map[string]*hclspec.Spec{

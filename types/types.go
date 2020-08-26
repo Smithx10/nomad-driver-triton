@@ -30,6 +30,13 @@ type Network struct {
 	UUID string `codec:"uuid" json:"uuid"`
 }
 
+type DockerAuth struct {
+	Username   string `codec:"username"`
+	Password   string `codec:"password"`
+	Email      string `codec:"email"`
+	ServerAddr string `codec:"server_address"`
+}
+
 type DockerImage struct {
 	Name     string `codec:"name" json:"name"`
 	Tag      string `codec:"tag" json:"tag"`
@@ -68,6 +75,7 @@ type DockerAPI struct {
 	TTY            bool              `codec:"tty" json:"tty"`
 	WorkingDir     string            `codec:"workingdir" json:"workingdir"`
 	Image          DockerImage       `codec:"image" json:"image"`
+	Auth           DockerAuth        `codec:"auth"`
 	Labels         map[string]string `codec:"labels" json:"labels"`
 	PublicNetwork  string            `codec:"public_network" json:"public_network"`
 	PrivateNetwork string            `codec:"private_network" json:"private_network"`
