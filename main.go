@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/Smithx10/nomad-driver-triton/plugin"
+	"github.com/Smithx10/nomad-driver-triton/triton"
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins"
 )
@@ -12,5 +12,5 @@ func main() {
 
 // factory returns a new instance of the IIS Driver plugin
 func factory(log hclog.Logger) interface{} {
-	return plugin.NewDriver(log)
+	return triton.NewPlugin(log)
 }

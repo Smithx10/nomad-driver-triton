@@ -10,12 +10,12 @@ require (
 	github.com/creack/pty v1.1.11 // indirect
 	github.com/fsouza/go-dockerclient v1.6.5
 	github.com/go-ole/go-ole v1.2.4 // indirect
-	github.com/golang/protobuf v1.3.5 // indirect
+	github.com/gofrs/uuid v3.3.0+incompatible
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.1 // indirect
 	github.com/hashicorp/errwrap v1.0.0
 	github.com/hashicorp/go-hclog v0.14.1
 	github.com/hashicorp/go-version v1.2.1 // indirect
-	github.com/hashicorp/nomad v0.12.3
+	github.com/hashicorp/nomad v0.10.3-0.20200311101349-a21262a3d28e
 	github.com/hashicorp/serf v0.9.4 // indirect
 	github.com/hpcloud/tail v1.0.1-0.20180514194441-a1dbeea552b7 // indirect
 	github.com/joyent/triton-go v1.8.5
@@ -24,7 +24,6 @@ require (
 	github.com/mitchellh/go-testing-interface v1.0.4 // indirect
 	github.com/mitchellh/mapstructure v1.3.3 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/opencontainers/runtime-spec v1.0.2 // indirect
 	github.com/shirou/gopsutil v2.20.7+incompatible // indirect
 	github.com/stretchr/testify v1.5.1
 	github.com/vmihailenco/msgpack v4.0.4+incompatible // indirect
@@ -35,3 +34,6 @@ require (
 )
 
 replace github.com/godbus/dbus => github.com/godbus/dbus v5.0.1+incompatible
+
+// try rebased nomad with remote-task
+replace github.com/hashicorp/nomad => github.com/smithx10/nomad v0.9.1-0.20200910182001-47562d9edcf6
