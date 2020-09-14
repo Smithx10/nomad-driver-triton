@@ -51,8 +51,8 @@ var (
 	// pluginConfigSpec is the hcl specification returned by the ConfigSchema RPC.
 	pluginConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
 		"enabled":   hclspec.NewAttr("enabled", "bool", false),
-		"cloudapi":  hclspec.NewAttr("enabled", "bool", true),
-		"dockerapi": hclspec.NewAttr("enabled", "bool", true),
+		"cloudapi":  hclspec.NewAttr("cloudapi", "bool", false),
+		"dockerapi": hclspec.NewAttr("dockerapi", "bool", false),
 		"cluster":   hclspec.NewAttr("cluster", "string", false),
 		"region":    hclspec.NewAttr("region", "string", false),
 	})
@@ -127,7 +127,7 @@ var (
 	// capabilities is returned by the Capabilities RPC and indicates what
 	// optional features this driver supports
 	capabilities = &drivers.Capabilities{
-		SendSignals: false,
+		SendSignals: true,
 		Exec:        false,
 		FSIsolation: drivers.FSIsolationImage,
 		RemoteTasks: true,
@@ -461,6 +461,7 @@ func (d *Driver) buildFingerprint(ctx context.Context) *drivers.Fingerprint {
 }
 
 func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
+	d.logger.Info("Inside RecoverTask")
 	d.logger.Info("recovering triton instance", "version", handle.Version,
 		"task_config.id", handle.Config.ID, "task_state", handle.State,
 		"driver_state_bytes", len(handle.DriverState))
@@ -484,10 +485,10 @@ func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
 		return fmt.Errorf("failed to decode task state from handle: %v", err)
 	}
 
-	d.logger.Info("triton instance recovered", "arn", taskState.InstUUID,
+	d.logger.Info("triton instance recovered", "instUUID", taskState.InstUUID,
 		"started_at", taskState.StartedAt)
 
-	h := newTaskHandle(d.logger, taskState, handle.Config, d.client)
+	h := newTaskHandle(d.logger, d.eventer, taskState, handle.Config, d.client)
 
 	d.tasks.Set(handle.Config.ID, h)
 
@@ -496,6 +497,7 @@ func (d *Driver) RecoverTask(handle *drivers.TaskHandle) error {
 }
 
 func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drivers.DriverNetwork, error) {
+	d.logger.Info("Inside StartTask")
 	if !d.config.Enabled {
 		return nil, nil, fmt.Errorf("disabled")
 	}
@@ -513,7 +515,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	handle := drivers.NewTaskHandle(taskHandleVersion)
 	handle.Config = cfg
 
-	instUUID, err := d.client.RunTask(context.Background(), cfg, driverConfig)
+	instUUID, driverNetwork, err := d.client.RunTask(context.Background(), cfg, driverConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to start Triton instance: %v", err)
 	}
@@ -526,7 +528,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 
 	d.logger.Info("triton instance started", "instuuid", driverState.InstUUID, "started_at", driverState.StartedAt)
 
-	h := newTaskHandle(d.logger, driverState, cfg, d.client)
+	h := newTaskHandle(d.logger, d.eventer, driverState, cfg, d.client)
 
 	if err := handle.SetDriverState(&driverState); err != nil {
 		d.logger.Error("failed to start task, error setting driver state", "error", err)
@@ -537,7 +539,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	d.tasks.Set(cfg.ID, h)
 
 	go h.run()
-	return handle, nil, nil
+	return handle, driverNetwork, nil
 }
 
 func (d *Driver) WaitTask(ctx context.Context, taskID string) (<-chan *drivers.ExitResult, error) {
@@ -619,8 +621,10 @@ func (d *Driver) DestroyTask(taskID string, force bool) error {
 	// Safe to always kill here as detaching will have already happened
 	handle.stop(false)
 
-	if err := handle.destroyTask(); err != nil {
-		return err
+	if !handle.detach {
+		if err := handle.destroyTask(); err != nil {
+			return err
+		}
 	}
 
 	d.tasks.Delete(taskID)
@@ -679,8 +683,25 @@ func (d *Driver) TaskEvents(ctx context.Context) (<-chan *drivers.TaskEvent, err
 	return d.eventer.TaskEvents(ctx)
 }
 
-func (d *Driver) SignalTask(_ string, _ string) error {
-	return fmt.Errorf("Triton driver does not support signals")
+func (d *Driver) SignalTask(taskID string, signal string) error {
+	d.logger.Info("Inside SignalTask")
+	handle, ok := d.tasks.Get(taskID)
+	if !ok {
+		return drivers.ErrTaskNotFound
+	}
+	instUUID := handle.instUUID
+
+	switch signal {
+	case "reboot":
+		handle.rebooting = true
+		if err := d.client.RebootTask(context.Background(), instUUID); err != nil {
+			handle.rebooting = false
+			return err
+		}
+		handle.rebooting = false
+	}
+
+	return nil
 }
 
 func (d *Driver) ExecTask(_ string, _ []string, _ time.Duration) (*drivers.ExecTaskResult, error) {

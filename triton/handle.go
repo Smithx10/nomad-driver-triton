@@ -9,6 +9,7 @@ import (
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/client/lib/fifo"
 	"github.com/hashicorp/nomad/client/stats"
+	"github.com/hashicorp/nomad/drivers/shared/eventer"
 	"github.com/hashicorp/nomad/plugins/drivers"
 )
 
@@ -25,6 +26,7 @@ const (
 type taskHandle struct {
 	instUUID     string
 	logger       hclog.Logger
+	eventer      *eventer.Eventer
 	tritonClient tritonClientInterface
 
 	totalCpuStats  *stats.CpuStats
@@ -42,13 +44,14 @@ type taskHandle struct {
 	doneCh      chan struct{}
 
 	// detach from ecs task instead of killing it if true.
-	detach bool
+	detach    bool
+	rebooting bool
 
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
-func newTaskHandle(logger hclog.Logger, ts TaskState, taskConfig *drivers.TaskConfig, tritonClient tritonClientInterface) *taskHandle {
+func newTaskHandle(logger hclog.Logger, eventer *eventer.Eventer, ts TaskState, taskConfig *drivers.TaskConfig, tritonClient tritonClientInterface) *taskHandle {
 	ctx, cancel := context.WithCancel(context.Background())
 	logger = logger.Named("handle").With("instuuid", ts.InstUUID)
 
@@ -60,8 +63,10 @@ func newTaskHandle(logger hclog.Logger, ts TaskState, taskConfig *drivers.TaskCo
 		startedAt:    ts.StartedAt,
 		exitResult:   &drivers.ExitResult{},
 		logger:       logger,
+		eventer:      eventer,
 		doneCh:       make(chan struct{}),
 		detach:       false,
+		rebooting:    false,
 		ctx:          ctx,
 		cancel:       cancel,
 	}
@@ -99,6 +104,8 @@ func (h *taskHandle) run() {
 		h.exitResult = &drivers.ExitResult{}
 	}
 	h.stateLock.Unlock()
+	// prevStatus is used for Emitting Status changes.
+	prevStatus := tritonInstanceStatusUnknown
 
 	// Open the tasks StdoutPath so we can write task health status updates.
 	f, err := fifo.OpenWriter(h.taskConfig.StdoutPath)
@@ -118,8 +125,19 @@ func (h *taskHandle) run() {
 	for h.ctx.Err() == nil {
 		select {
 		case <-time.After(5 * time.Second):
-
 			status, err := h.tritonClient.DescribeTaskStatus(h.ctx, h.instUUID)
+			if prevStatus != status {
+				h.eventer.EmitEvent(
+					&drivers.TaskEvent{
+						TaskID:    h.taskConfig.ID,
+						TaskName:  h.taskConfig.Name,
+						AllocID:   h.taskConfig.AllocID,
+						Timestamp: time.Now(),
+						Message:   fmt.Sprintf("Alloc Status changed from %s to %s.", prevStatus, status),
+					})
+
+				prevStatus = status
+			}
 			if err != nil {
 				h.handleRunError(err, "failed to find Triton Instance")
 				return
@@ -143,9 +161,11 @@ func (h *taskHandle) run() {
 			//h.handleRunError(fmt.Errorf("Triton instance status in terminal phase"), "task status: "+status)
 			//return
 			//}
-			if status == tritonInstanceStatusStopped {
-				h.handleRunError(fmt.Errorf("Triton instance status in terminal phase"), "task status: "+status)
-				return
+			if !h.rebooting {
+				if status == tritonInstanceStatusStopped {
+					h.handleRunError(fmt.Errorf("Triton instance status in terminal phase"), "task status: "+status)
+					return
+				}
 			}
 
 		case <-h.ctx.Done():

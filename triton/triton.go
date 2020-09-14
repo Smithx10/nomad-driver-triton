@@ -35,13 +35,16 @@ type tritonClientInterface interface {
 	// RunTask is used to trigger the running of a new Triton instance based on the
 	// provided configuration. The UUID of the Instance, as well as any errors are
 	// returned to the caller.
-	RunTask(ctx context.Context, dtc *drivers.TaskConfig, cfg TaskConfig) (string, error)
+	RunTask(ctx context.Context, dtc *drivers.TaskConfig, cfg TaskConfig) (string, *drivers.DriverNetwork, error)
 
 	// StopTask stops the running Triton Instance
 	StopTask(ctx context.Context, instUUID string) error
 
 	// DestroyTask stops the running Triton Instance
 	DestroyTask(ctx context.Context, instUUID string) error
+
+	// DestroyTask stops the running Triton Instance
+	RebootTask(ctx context.Context, instUUID string) error
 }
 
 type tritonClient struct {
@@ -91,33 +94,36 @@ func (c tritonClient) DescribeTaskStatus(ctx context.Context, instUUID string) (
 }
 
 // RunTask satisfies the triton.tritonClientInterface RunTask interface function.
-func (c tritonClient) RunTask(ctx context.Context, dtc *drivers.TaskConfig, cfg TaskConfig) (string, error) {
+func (c tritonClient) RunTask(ctx context.Context, dtc *drivers.TaskConfig, cfg TaskConfig) (string, *drivers.DriverNetwork, error) {
 	c.logger.Info("In_RunTask")
 
 	// instanceID Is used for query a deployed instance for both dockerapi and cloudapi
 	var instanceID string
+	// primaryIP is used for advertising the instance address via DriverNetwork
+	var primaryIP string
 
 	input, err := c.buildTaskInput(ctx, dtc, cfg)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	// Init compute client to communicate to Triton
 	cmpt, err := c.tclient.Compute()
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	if input.apitype == "cloudapi" {
 		i, err := cmpt.Instances().Create(ctx, input.tritonInput)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 
-		err = c.waitForInstState(cmpt, i.ID, tritonInstanceStatusRunning, 60)
+		inst, err := c.waitForInstState(cmpt, i.ID, tritonInstanceStatusRunning, 60, 5)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
+		primaryIP = inst.PrimaryIP
 
 		instanceID = i.ID
 	}
@@ -130,23 +136,23 @@ func (c tritonClient) RunTask(ctx context.Context, dtc *drivers.TaskConfig, cfg 
 				*input.dockerAuthConfig,
 			)
 			if err != nil {
-				return "", err
+				return "", nil, err
 			}
 		}
 
 		// Create Docker Instance
 		i, err := c.dclient.CreateContainer(*input.dockerInput)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		// overRide get instance with docker instance id
 		instanceID = fmt.Sprintf("%s-%s-%s-%s-%s", i.ID[0:8], i.ID[8:12], i.ID[12:16], i.ID[16:20], i.ID[20:32])
 
 		// Create Container Blocks,  but lets poll anyway
 		// wait for instance to be provisioned.  we land in the "stopped" state before being able to start
-		err = c.waitForInstState(cmpt, instanceID, tritonInstanceStatusStopped, 60)
+		_, err = c.waitForInstState(cmpt, instanceID, tritonInstanceStatusStopped, 60, 5)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 
 		// Triton DockerAPI doesn't allow for Tag Placement, Update via CloudAPI
@@ -156,7 +162,7 @@ func (c tritonClient) RunTask(ctx context.Context, dtc *drivers.TaskConfig, cfg 
 				Tags: cfg.Tags,
 			})
 			if err != nil {
-				return "", err
+				return "", nil, err
 			}
 		}
 
@@ -167,16 +173,17 @@ func (c tritonClient) RunTask(ctx context.Context, dtc *drivers.TaskConfig, cfg 
 				Metadata: input.dockerMdata,
 			})
 			if err != nil {
-				return "", err
+				return "", nil, err
 			}
 		}
 
 		// Start the Docker Container
 		c.dclient.StartContainer(i.ID, i.HostConfig)
-		err = c.waitForInstState(cmpt, instanceID, tritonInstanceStatusRunning, 5)
+		inst, err := c.waitForInstState(cmpt, instanceID, tritonInstanceStatusRunning, 5, 5)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
+		primaryIP = inst.PrimaryIP
 	}
 
 	// Enable Deletion Protection if true
@@ -185,11 +192,14 @@ func (c tritonClient) RunTask(ctx context.Context, dtc *drivers.TaskConfig, cfg 
 			InstanceID: instanceID,
 		})
 		if err != nil {
-			return "", errors.New("Failed to Apply Deletion-Protection")
+			return "", nil, errors.New("Failed to Apply Deletion-Protection")
 		}
 	}
 
-	return instanceID, nil
+	return instanceID, &drivers.DriverNetwork{
+		IP:            primaryIP,
+		AutoAdvertise: true,
+	}, nil
 }
 
 // buildTaskInput is used to convert the jobspec supplied configuration input
@@ -461,7 +471,7 @@ func (c tritonClient) StopTask(ctx context.Context, instUUID string) error {
 	if err := cmpt.Instances().Stop(ctx, &compute.StopInstanceInput{InstanceID: instUUID}); err != nil {
 		return err
 	}
-        err = c.waitForInstState(cmpt, instUUID, "stopped", 60)
+	_, err = c.waitForInstState(cmpt, instUUID, "stopped", 60, 5)
 	if err != nil {
 		return err
 	}
@@ -480,7 +490,37 @@ func (c tritonClient) DestroyTask(ctx context.Context, instUUID string) error {
 	if err := cmpt.Instances().Delete(ctx, &compute.DeleteInstanceInput{ID: instUUID}); err != nil {
 		return err
 	}
-        err = c.waitForInstState(cmpt, instUUID, "deleted", 60)
+	_, err = c.waitForInstState(cmpt, instUUID, "deleted", 60, 5)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RebootTask satisfies the triton.tritonClientInterface RebootTask interface function.
+func (c tritonClient) RebootTask(ctx context.Context, instUUID string) error {
+	cmpt, err := c.tclient.Compute()
+	if err != nil {
+		return err
+	}
+
+	// Stop the Instance
+	if err := cmpt.Instances().Stop(ctx, &compute.StopInstanceInput{InstanceID: instUUID}); err != nil {
+		return err
+	}
+	_, err = c.waitForInstState(cmpt, instUUID, "stopped", 60, 3)
+	if err != nil {
+		return err
+	}
+
+	if err := cmpt.Instances().Start(ctx, &compute.StartInstanceInput{InstanceID: instUUID}); err != nil {
+	}
+	// Start the Instance
+	if err := cmpt.Instances().Start(ctx, &compute.StartInstanceInput{InstanceID: instUUID}); err != nil {
+		return err
+	}
+	_, err = c.waitForInstState(cmpt, instUUID, "running", 60, 3)
 	if err != nil {
 		return err
 	}
@@ -700,21 +740,23 @@ func dockerImageRef(repo string, tag string) string {
 	return fmt.Sprintf("%s:%s", repo, tag)
 }
 
-func (c *tritonClient) waitForInstState(cmpt *compute.ComputeClient, uuid string, state string, timeout int) error {
+func (c *tritonClient) waitForInstState(cmpt *compute.ComputeClient, uuid string, state string, timeout int, interval int) (*compute.Instance, error) {
 	var current int
+	var instance *compute.Instance
 	for {
 		running, _ := cmpt.Instances().Get(context.Background(), &compute.GetInstanceInput{ID: uuid})
 		if running != nil {
 			if running.State == state {
+				instance = running
 				break
 			}
 			if current > timeout {
 				errMsg := fmt.Errorf("Timeout exceeded while waiting for Inst: %s to be State: %s", uuid, state)
-				return errMsg
+				return nil, errMsg
 			}
-			time.Sleep(5 * time.Second)
-			current = current + 5
+			time.Sleep(time.Duration(interval) * time.Second)
+			current = current + interval
 		}
 	}
-	return nil
+	return instance, nil
 }
