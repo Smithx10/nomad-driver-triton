@@ -20,9 +20,14 @@ func TestDockerDriver_AuthFromTaskConfig(t *testing.T) {
 		Desc       string
 	}{
 		{
-			Auth:       types.DockerAuth{},
-			AuthConfig: nil,
-			Desc:       "Empty Config",
+			Auth: types.DockerAuth{},
+			AuthConfig: &docker.AuthConfiguration{
+				Username:      "",
+				Password:      "",
+				Email:         "",
+				ServerAddress: "",
+			},
+			Desc: "Empty Config",
 		},
 		{
 			Auth: types.DockerAuth{
